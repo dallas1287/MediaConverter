@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ImportGroup Label="PropertySheets" />
+  <PropertyGroup Label="UserMacros">
+    <FFMPEG_DIR>C:\ffmpeg\ffmpeg-20200522-38490cb-win64-dev\</FFMPEG_DIR>
+  </PropertyGroup>
+  <PropertyGroup>
+    <ExecutablePath>$(ExecutablePath)</ExecutablePath>
+    <IncludePath>$(FFMPEG_DIR)\include\;$(IncludePath)</IncludePath>
+    <LibraryPath>$(FFMPEG_DIR)\lib\;$(LibraryPath)</LibraryPath>
+    <OutDir>$(ECR_MAIN_DIR)\bin\</OutDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup />
+  <ItemGroup>
+    <BuildMacro Include="FFMPEG_DIR">
+      <Value>$(FFMPEG_DIR)</Value>
+      <EnvironmentVariable>true</EnvironmentVariable>
+    </BuildMacro>
+  </ItemGroup>
+</Project>

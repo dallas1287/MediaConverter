@@ -1,0 +1,8 @@
+
+bin/*
+.vs/*
+MediaConverter/include/*
+MediaConverter/lib/*
+MediaConverter/x64/*
+MediaConverter/MediaConverter.vcxproj.user
+MediaConverter/MediaConverter.vcxproj.filters
