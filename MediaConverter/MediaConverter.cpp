@@ -178,6 +178,46 @@ ErrorCode CMediaConverter::openVideoReader(VideoReaderState* state, const char* 
     return ErrorCode::SUCCESS;
 }
 
+ErrorCode CMediaConverter::readVideoReaderFrame(VideoReaderState* state, std::unique_ptr<unsigned char[]>& fb_ptr, bool requestFlush)
+{
+    auto& width = state->width;
+    auto& height = state->height;
+    auto& av_format_ctx = state->av_format_ctx;
+    auto& av_codec_ctx = state->av_codec_ctx;
+    auto& av_frame = state->av_frame;
+    auto& av_packet = state->av_packet;
+    auto& vid_str_idx = state->video_stream_index;
+    auto& sws_scaler_ctx = state->sws_scaler_ctx;
+
+    int response = processPacketsIntoFrames(state);
+
+    if (response == AVERROR_EOF)
+    {
+        avcodec_flush_buffers(av_codec_ctx);
+        return ErrorCode::FILE_EOF;
+    }
+
+    //setup scaler
+    if (!sws_scaler_ctx)
+    {
+        sws_scaler_ctx = sws_getContext(width, height, av_codec_ctx->pix_fmt, //input
+            width, height, AV_PIX_FMT_RGB0, //output
+            SWS_BILINEAR, NULL, NULL, NULL); //options
+    }
+    if (!sws_scaler_ctx)
+        return ErrorCode::NO_SCALER;
+
+    uint64_t size = av_frame->width * av_frame->height * 4; //static_cast just gets intellisense to shut up about 4 bytes to 8 bytes conversions
+    fb_ptr.reset(new unsigned char[size]);
+
+    unsigned char* dest[4] = {fb_ptr.get(), NULL, NULL, NULL };
+    int dest_linesize[4] = { width * 4, 0, 0, 0 };
+
+    sws_scale(sws_scaler_ctx, av_frame->data, av_frame->linesize, 0, height, dest, dest_linesize);
+
+    return ErrorCode::SUCCESS;
+}
+
 ErrorCode CMediaConverter::readVideoReaderFrame(VideoReaderState* state, unsigned char** frameBuffer, bool requestFlush)
 {
     auto& width = state->width;
@@ -269,7 +309,7 @@ ErrorCode CMediaConverter::seekToStart(VideoReaderState* state)
     return ErrorCode::SEEK_FAILED;
 }
 
-ErrorCode CMediaConverter::rewindFrame(VideoReaderState* state, unsigned char** frame_buffer)
+ErrorCode CMediaConverter::rewindFrame(VideoReaderState* state, std::unique_ptr<unsigned char[]>& fb_ptr)
 {
     uint64_t ref_pts = state->pts;
     uint64_t interval = state->timebase.den / state->avg_frame_rate.num;
@@ -299,6 +339,47 @@ ErrorCode CMediaConverter::rewindFrame(VideoReaderState* state, unsigned char** 
             if (state->key_frame)
                 bool stop = true;
         }
+        readVideoReaderFrame(state, fb_ptr);
+
+    }
+    else
+    {
+        return ErrorCode::SEEK_FAILED;
+    }
+
+    return ErrorCode::SUCCESS;
+}
+
+ErrorCode CMediaConverter::rewindFrame(VideoReaderState* state, unsigned char** frame_buffer)
+{
+    uint64_t ref_pts = state->pts;
+    uint64_t interval = state->timebase.den / state->avg_frame_rate.num;
+    uint64_t ts = ref_pts - interval;
+    if (state->key_frame)
+        bool stop = true;
+
+    if (av_seek_frame(state->av_format_ctx, state->video_stream_index, ts, AVSEEK_FLAG_BACKWARD) >= 0)
+    {
+        avcodec_flush_buffers(state->av_codec_ctx);
+
+        while (state->pts != ref_pts - (interval * 2))
+        {
+            processPacketsIntoFrames(state);
+
+            //decrease the timestamp if you get caught up with it repeatedly going back to a keyframe on the transitions between
+            //them and their surrounding frames
+            if (state->pts == ref_pts)
+            {
+                if (av_seek_frame(state->av_format_ctx, state->video_stream_index, ts - (interval * 2), AVSEEK_FLAG_BACKWARD) >= 0)
+                {
+                    avcodec_flush_buffers(state->av_codec_ctx);
+                }
+                else
+                    return ErrorCode::SEEK_FAILED;
+            }
+            if (state->key_frame)
+                bool stop = true;
+        }
         readVideoReaderFrame(state, frame_buffer);
 
     }
@@ -309,6 +390,7 @@ ErrorCode CMediaConverter::rewindFrame(VideoReaderState* state, unsigned char** 
 
     return ErrorCode::SUCCESS;
 }
+
 
 ErrorCode CMediaConverter::closeVideoReader(VideoReaderState* state)
 {

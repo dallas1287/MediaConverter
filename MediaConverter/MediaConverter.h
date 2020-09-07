@@ -123,9 +123,11 @@ public:
 	CMediaConverter(void);
 	ErrorCode loadFrame(const char* filename, int& width, int& height, unsigned char** data);
 	ErrorCode openVideoReader(VideoReaderState* state, const char* filename);
-	ErrorCode readVideoReaderFrame(VideoReaderState* state, unsigned char** frame_buffer, bool requestFlush = false);
+	ErrorCode readVideoReaderFrame(VideoReaderState* state, std::unique_ptr<unsigned char[]>& fb_ptr, bool requestFlush = false);
+	ErrorCode readVideoReaderFrame(VideoReaderState* state, unsigned char** frameBuffer, bool requestFlush = false); //unmanaged data version, creates heap data in function
 	int processPacketsIntoFrames(VideoReaderState* state, bool requestFlush = false);
 	ErrorCode seekToStart(VideoReaderState* state);
-	ErrorCode rewindFrame(VideoReaderState* state, unsigned char** frame_buffer);
+	ErrorCode rewindFrame(VideoReaderState* state, std::unique_ptr<unsigned char[]>& fb_ptr);
+	ErrorCode rewindFrame(VideoReaderState* state, unsigned char** frame_buffer); //unmanaged data version, creates heap data in function
 	ErrorCode closeVideoReader(VideoReaderState* state);
 };
