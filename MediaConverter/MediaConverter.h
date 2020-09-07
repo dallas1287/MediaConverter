@@ -108,8 +108,8 @@ public:
 
 	std::string codeName;
 	int frame_number = -1;
-	int pts = -1;
-	int pkt_dts = -1;
+	int64_t pts = -1;
+	int64_t pkt_dts = -1;
 	int key_frame = -1;
 	int64_t start_time = -1;
 	int64_t duration = -1;
@@ -124,6 +124,8 @@ public:
 	ErrorCode loadFrame(const char* filename, int& width, int& height, unsigned char** data);
 	ErrorCode openVideoReader(VideoReaderState* state, const char* filename);
 	ErrorCode readVideoReaderFrame(VideoReaderState* state, unsigned char** frame_buffer, bool requestFlush = false);
+	int processPacketsIntoFrames(VideoReaderState* state, bool requestFlush = false);
 	ErrorCode seekToStart(VideoReaderState* state);
+	ErrorCode rewindFrame(VideoReaderState* state, unsigned char** frame_buffer);
 	ErrorCode closeVideoReader(VideoReaderState* state);
 };

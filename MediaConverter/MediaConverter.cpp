@@ -189,41 +189,13 @@ ErrorCode CMediaConverter::readVideoReaderFrame(VideoReaderState* state, unsigne
     auto& vid_str_idx = state->video_stream_index;
     auto& sws_scaler_ctx = state->sws_scaler_ctx;
 
-    //inital frame read, gives it an initial state to branch from
-    int response = av_read_frame(av_format_ctx, av_packet);
-    if (response >= 0)
-    {
-        //send back and receive decoded frames, until frames can't be read
-        do{
-            if (av_packet->stream_index != vid_str_idx)
-                continue;
-
-            response = avcodec_send_packet(av_codec_ctx, requestFlush ? nullptr : av_packet);
-            if (response < 0)
-                return ErrorCode::PKT_NOT_DECODED;
-
-            response = avcodec_receive_frame(av_codec_ctx, av_frame);
-            if (response == AVERROR(EAGAIN) || response == AVERROR_EOF)
-                continue;
-            else if (response < 0)
-                return ErrorCode::PKT_NOT_RECEIVED;
-
-            av_packet_unref(av_packet);
-            break;
-        } while (av_read_frame(av_format_ctx, av_packet) >= 0);
-    }
+    int response = processPacketsIntoFrames(state);
 
     if (response == AVERROR_EOF)
     {
         avcodec_flush_buffers(av_codec_ctx);
         return ErrorCode::FILE_EOF;
     }
-    //retrieve stats
-    state->frame_number = av_codec_ctx->frame_number;
-    state->pts = av_frame->pts;
-    state->pkt_dts = av_frame->pkt_dts;
-    state->key_frame = av_frame->key_frame;
-    state->pkt_size = av_frame->pkt_size;
 
     //setup scaler
     if (!sws_scaler_ctx)
@@ -248,12 +220,94 @@ ErrorCode CMediaConverter::readVideoReaderFrame(VideoReaderState* state, unsigne
     return ErrorCode::SUCCESS;
 }
 
+/*
+* this returns int because the av_read_frame supercedes any other errors but those errors are sent back 
+* and can be handled if returned. av_read_frame returns negative for errors and 0 for success.
+* any errors for ErrorCode class are all positive
+*/
+int CMediaConverter::processPacketsIntoFrames(VideoReaderState* state, bool requestFlush)
+{
+    //inital frame read, gives it an initial state to branch from
+    int response = av_read_frame(state->av_format_ctx, state->av_packet);
+    if (response >= 0)
+    {
+        //send back and receive decoded frames, until frames can't be read
+        do {
+            if (state->av_packet->stream_index != state->video_stream_index)
+                continue;
+
+            response = avcodec_send_packet(state->av_codec_ctx, requestFlush ? nullptr : state->av_packet);
+            if (response < 0)
+                return (int)ErrorCode::PKT_NOT_DECODED;
+
+            response = avcodec_receive_frame(state->av_codec_ctx, state->av_frame);
+            if (response == AVERROR(EAGAIN) || response == AVERROR_EOF)
+                continue;
+            else if (response < 0)
+                return (int)ErrorCode::PKT_NOT_RECEIVED;
+
+            av_packet_unref(state->av_packet);
+            break;
+        } while (av_read_frame(state->av_format_ctx, state->av_packet) >= 0);
+    }
+
+    //retrieve stats
+    state->frame_number = state->av_codec_ctx->frame_number;
+    state->pts = state->av_frame->pts;
+    state->pkt_dts = state->av_frame->pkt_dts;
+    state->key_frame = state->av_frame->key_frame;
+    state->pkt_size = state->av_frame->pkt_size;
+
+    return response;
+}
+
 ErrorCode CMediaConverter::seekToStart(VideoReaderState* state)
 {
     if (av_seek_frame(state->av_format_ctx, state->video_stream_index, state->start_time, 0) >= 0)
         return ErrorCode::SUCCESS;
 
     return ErrorCode::SEEK_FAILED;
+}
+
+ErrorCode CMediaConverter::rewindFrame(VideoReaderState* state, unsigned char** frame_buffer)
+{
+    uint64_t ref_pts = state->pts;
+    uint64_t interval = state->timebase.den / state->avg_frame_rate.num;
+    uint64_t ts = ref_pts - interval;
+    if (state->key_frame)
+        bool stop = true;
+
+    if (av_seek_frame(state->av_format_ctx, state->video_stream_index, ts, AVSEEK_FLAG_BACKWARD) >= 0)
+    {
+        avcodec_flush_buffers(state->av_codec_ctx);
+        
+        while (state->pts != ref_pts - (interval *2))
+        {
+            processPacketsIntoFrames(state);
+
+            //decrease the timestamp if you get caught up with it repeatedly going back to a keyframe on the transitions between
+            //them and their surrounding frames
+            if (state->pts == ref_pts)
+            {
+                if (av_seek_frame(state->av_format_ctx, state->video_stream_index, ts - (interval * 2), AVSEEK_FLAG_BACKWARD) >= 0)
+                {
+                    avcodec_flush_buffers(state->av_codec_ctx);
+                }
+                else
+                    return ErrorCode::SEEK_FAILED;
+            }
+            if (state->key_frame)
+                bool stop = true;
+        }
+        readVideoReaderFrame(state, frame_buffer);
+
+    }
+    else
+    {
+        return ErrorCode::SEEK_FAILED;
+    }
+
+    return ErrorCode::SUCCESS;
 }
 
 ErrorCode CMediaConverter::closeVideoReader(VideoReaderState* state)
