@@ -6,3 +6,8 @@ MediaConverter/lib/*
 MediaConverter/x64/*
 MediaConverter/MediaConverter.vcxproj.user
 MediaConverter/MediaConverter.vcxproj.filters
+packages/*
+UnitTests/packages.config
+UnitTests/UnitTests.vcxproj.user
+UnitTests/x64/*
+x64/*

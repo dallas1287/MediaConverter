@@ -56,7 +56,7 @@ public:
 		video_stream_index = other.video_stream_index;
 		timebase.num = other.timebase.num;
 		timebase.den = other.timebase.den;
-		codeName = other.codeName;
+		codecName = other.codecName;
 		frame_number = other.frame_number;
 		pts = other.pts;
 		pkt_dts = other.pkt_dts;
@@ -81,7 +81,7 @@ public:
 			video_stream_index == other.video_stream_index &&
 			timebase.num == other.timebase.num &&
 			timebase.den == other.timebase.den &&
-			codeName == other.codeName &&
+			codecName == other.codecName &&
 			frame_number == other.frame_number &&
 			pts == other.pts &&
 			pkt_dts == other.pkt_dts &&
@@ -93,7 +93,15 @@ public:
 			pkt_size == other.pkt_size;
 	}
 
-public:
+	int64_t FrameInterval()
+	{
+		if (timebase.num <= 0 || timebase.den <= 0 ||
+			avg_frame_rate.num <= 0 || avg_frame_rate.den <= 0)
+			return 0;
+
+		return timebase.den / avg_frame_rate.num;
+	}
+
 	int width = 0;
 	int height = 0;
 	uint8_t* frame_buffer = nullptr;
@@ -106,7 +114,7 @@ public:
 	int video_stream_index = -1;
 	AVRational timebase = { -1, -1 };
 
-	std::string codeName;
+	std::string codecName;
 	int frame_number = -1;
 	int64_t pts = -1;
 	int64_t pkt_dts = -1;
@@ -118,16 +126,23 @@ public:
 };
 
 // This class is exported from the dll
-class MEDIACONVERTER_API CMediaConverter {
+class MEDIACONVERTER_API CMediaConverter 
+{
+	typedef std::unique_ptr<unsigned char[]> FBPtr;
+
 public:
 	CMediaConverter(void);
 	ErrorCode loadFrame(const char* filename, int& width, int& height, unsigned char** data);
 	ErrorCode openVideoReader(VideoReaderState* state, const char* filename);
-	ErrorCode readVideoReaderFrame(VideoReaderState* state, std::unique_ptr<unsigned char[]>& fb_ptr, bool requestFlush = false);
+	ErrorCode readVideoReaderFrame(VideoReaderState* state, FBPtr& fb_ptr, bool requestFlush = false);
 	ErrorCode readVideoReaderFrame(VideoReaderState* state, unsigned char** frameBuffer, bool requestFlush = false); //unmanaged data version, creates heap data in function
+	ErrorCode readVideoReaderFrameAt(VideoReaderState* state, FBPtr& fb_ptr, int64_t targetPts, bool requestFlush = false);
 	int processPacketsIntoFrames(VideoReaderState* state, bool requestFlush = false);
+	ErrorCode seekToFrame(VideoReaderState* state, int64_t targetPts);
 	ErrorCode seekToStart(VideoReaderState* state);
-	ErrorCode rewindFrame(VideoReaderState* state, std::unique_ptr<unsigned char[]>& fb_ptr);
+	ErrorCode rewindFrame(VideoReaderState* state, FBPtr& fb_ptr);
 	ErrorCode rewindFrame(VideoReaderState* state, unsigned char** frame_buffer); //unmanaged data version, creates heap data in function
+	ErrorCode rewindToBuffer(VideoReaderState* state, FBPtr& fbptr);
+	ErrorCode rewindToBuffer(VideoReaderState* state, unsigned char** frame_buffer); //unmanaged data version, creates heap data in function
 	ErrorCode closeVideoReader(VideoReaderState* state);
 };
