@@ -9,6 +9,7 @@
 #else
 #define MEDIACONVERTER_API __declspec(dllimport)
 #endif
+#include <vector>
 #include <iostream>
 
 //ffmpeg includes
@@ -21,6 +22,7 @@ extern "C"
 
 enum class ErrorCode : int
 {
+	AGAIN = -2,
 	FILE_EOF = -1,
 	SUCCESS,
 	NO_FMT_CTX,
@@ -56,9 +58,12 @@ public:
 		video_stream_index = other.video_stream_index;
 		timebase.num = other.timebase.num;
 		timebase.den = other.timebase.den;
+		frame_ct = other.frame_ct;
 		codecName = other.codecName;
 		frame_number = other.frame_number;
-		pts = other.pts;
+		frame_pts = other.frame_pts;
+		frame_pkt_dts = other.frame_pkt_dts;
+		pkt_pts = other.pkt_pts;
 		pkt_dts = other.pkt_dts;
 		key_frame = other.key_frame;
 		start_time = other.start_time;
@@ -81,9 +86,12 @@ public:
 			video_stream_index == other.video_stream_index &&
 			timebase.num == other.timebase.num &&
 			timebase.den == other.timebase.den &&
+			frame_ct == other.frame_ct &&
 			codecName == other.codecName &&
 			frame_number == other.frame_number &&
-			pts == other.pts &&
+			frame_pts == other.frame_pts &&
+			frame_pkt_dts == other.frame_pkt_dts &&
+			pkt_pts == other.pkt_pts &&
 			pkt_dts == other.pkt_dts &&
 			key_frame == other.key_frame &&
 			start_time == other.start_time &&
@@ -93,13 +101,24 @@ public:
 			pkt_size == other.pkt_size;
 	}
 
-	int64_t FrameInterval()
+	int FPS() const
+	{
+		if (avg_frame_rate.num == 0 || avg_frame_rate.den == 0)
+			return 1;
+
+		//using round here because i have seen avg_frame_rates report strange values that end up @ 30.03 fps
+		return std::round(avg_frame_rate.num / (double)avg_frame_rate.den);
+	}
+
+	int64_t FrameInterval() const
 	{
 		if (timebase.num <= 0 || timebase.den <= 0 ||
 			avg_frame_rate.num <= 0 || avg_frame_rate.den <= 0)
-			return 0;
-
-		return timebase.den / avg_frame_rate.num;
+			return 1;
+		auto ret = (timebase.den / (double)timebase.num) / (double)(avg_frame_rate.num / (double)avg_frame_rate.den);
+		if (ret == 0)
+			return 1;
+		return ret;
 	}
 
 	int width = 0;
@@ -113,11 +132,14 @@ public:
 	SwsContext* sws_scaler_ctx = nullptr;
 	int video_stream_index = -1;
 	AVRational timebase = { -1, -1 };
+	int64_t frame_ct = 0;
 
 	std::string codecName;
 	int frame_number = -1;
-	int64_t pts = -1;
+	int64_t pkt_pts = -1;
+	int64_t frame_pts = -1;
 	int64_t pkt_dts = -1;
+	int64_t frame_pkt_dts = -1; //frame copies pkt_dts when it grabs frame data
 	int key_frame = -1;
 	int64_t start_time = -1;
 	int64_t duration = -1;
@@ -133,16 +155,57 @@ class MEDIACONVERTER_API CMediaConverter
 public:
 	CMediaConverter(void);
 	ErrorCode loadFrame(const char* filename, int& width, int& height, unsigned char** data);
+
+	ErrorCode openVideoReader(const char* filename);
 	ErrorCode openVideoReader(VideoReaderState* state, const char* filename);
-	ErrorCode readVideoReaderFrame(VideoReaderState* state, FBPtr& fb_ptr, bool requestFlush = false);
+
+	ErrorCode readVideoReaderFrame(VideoReaderState* state, FBPtr& fb_ptr, bool inReverse = false);
+	ErrorCode readVideoReaderFrame(FBPtr& fb_ptr, bool inReverse = false);
+
 	ErrorCode readVideoReaderFrame(VideoReaderState* state, unsigned char** frameBuffer, bool requestFlush = false); //unmanaged data version, creates heap data in function
+	ErrorCode readVideoReaderFrame(unsigned char** frameBuffer, bool requestFlush = false); //unmanaged data version, creates heap data in function
+
 	ErrorCode readVideoReaderFrameAt(VideoReaderState* state, FBPtr& fb_ptr, int64_t targetPts, bool requestFlush = false);
+	ErrorCode readVideoReaderFrameAt(FBPtr& fb_ptr, int64_t targetPts, bool requestFlush = false);
+
+	int processPackets();
+	int processPackets(VideoReaderState*);
+
 	int processPacketsIntoFrames(VideoReaderState* state, bool requestFlush = false);
-	ErrorCode seekToFrame(VideoReaderState* state, int64_t targetPts);
+	int processPacketsIntoFrames(bool requestFlush = false);
+
+	int accumulatePackets(VideoReaderState* state, std::vector<AVPacket*>* packets);
+	int accumulatePackets(std::vector<AVPacket*>* packets);
+
+	int fakeShit(std::vector<AVPacket*>* packets);
+	ErrorCode readPacket(VideoReaderState* state, AVPacket* packet);
+	ErrorCode readPacket(AVPacket* packet);
+
+	ErrorCode readFrameFromPacket(VideoReaderState* state, FBPtr& fb_ptr, AVPacket* packet);
+	ErrorCode readFrameFromPacket(FBPtr& fb_ptr, AVPacket* packet);
+
+	ErrorCode seekToFrame(VideoReaderState* state, int64_t targetPts, bool requestFlush = true, bool inReverse = false);
+	ErrorCode seekToFrame(int64_t targetPts, bool requestFlush = true, bool inReverse = false);
+
 	ErrorCode seekToStart(VideoReaderState* state);
+	ErrorCode seekToStart();
+
 	ErrorCode rewindFrame(VideoReaderState* state, FBPtr& fb_ptr);
+	ErrorCode rewindFrame(FBPtr& fb_ptr);
+
 	ErrorCode rewindFrame(VideoReaderState* state, unsigned char** frame_buffer); //unmanaged data version, creates heap data in function
+	ErrorCode rewindFrame(unsigned char** frame_buffer); //unmanaged data version, creates heap data in function
+
 	ErrorCode rewindToBuffer(VideoReaderState* state, FBPtr& fbptr);
+	ErrorCode rewindToBuffer(FBPtr& fbptr);
+
 	ErrorCode rewindToBuffer(VideoReaderState* state, unsigned char** frame_buffer); //unmanaged data version, creates heap data in function
+	ErrorCode rewindToBuffer(unsigned char** frame_buffer); //unmanaged data version, creates heap data in function
+
 	ErrorCode closeVideoReader(VideoReaderState* state);
+	ErrorCode closeVideoReader();
+
+	VideoReaderState& VrState() { return m_vrState; }
+private:
+	VideoReaderState m_vrState;
 };
