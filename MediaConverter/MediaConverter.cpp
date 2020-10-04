@@ -442,10 +442,7 @@ ErrorCode CMediaConverter::seekToStart()
 
 ErrorCode CMediaConverter::seekToStart(VideoReaderState* state)
 {
-    if (av_seek_frame(state->av_format_ctx, state->video_stream_index, state->start_time, 0) >= 0)
-        return ErrorCode::SUCCESS;
-
-    return ErrorCode::SEEK_FAILED;
+    return seekToFrame(0);
 }
 
 ErrorCode CMediaConverter::closeVideoReader()
