@@ -401,16 +401,16 @@ ErrorCode CMediaConverter::trackToFrame(VideoReaderState* state, int64_t targetP
     if (ret != (int)ErrorCode::SUCCESS)
         return (ErrorCode)ret;
     int64_t interval = state->FrameInterval() * state->FPS(); // interval starts at 1 second previous
-    while (!WithinTolerance(targetPts, state->pkt_dts, state->FrameInterval() + 10))
+    while (!WithinTolerance(targetPts, state->frame_pts, state->FrameInterval() - 10))
     {
-        if (state->pkt_dts < targetPts)
+        if (state->frame_pts < targetPts)
         {
             processPacketsIntoFrames(state);
         }
         else
         {
             interval *= 2; //double interval each time through to speed up seek
-            seekToFrame(state, state->pkt_dts - interval, true);
+            seekToFrame(state, state->frame_pts - interval, true);
             auto ret = processPacketsIntoFrames(state);
             if (ret != (int)ErrorCode::SUCCESS)
                 return (ErrorCode)ret;
