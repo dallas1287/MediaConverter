@@ -401,6 +401,7 @@ ErrorCode CMediaConverter::trackToFrame(VideoReaderState* state, int64_t targetP
     if (ret != (int)ErrorCode::SUCCESS)
         return (ErrorCode)ret;
     int64_t interval = state->FrameInterval() * state->FPS(); // interval starts at 1 second previous
+    int64_t previous = state->frame_pts;
     while (!WithinTolerance(targetPts, state->frame_pts, state->FrameInterval() - 10))
     {
         if (state->frame_pts < targetPts)
@@ -415,6 +416,10 @@ ErrorCode CMediaConverter::trackToFrame(VideoReaderState* state, int64_t targetP
             if (ret != (int)ErrorCode::SUCCESS)
                 return (ErrorCode)ret;
         }
+
+        if (previous == state->frame_pts)
+            return ErrorCode::SUCCESS;
+        previous = state->frame_pts;
     }
 
     return ErrorCode::SUCCESS;
