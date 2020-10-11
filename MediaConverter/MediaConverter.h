@@ -223,11 +223,15 @@ public:
 	int outputToAudioBuffer(AudioBuffer& ab_ptr);
 	int outputToAudioBuffer(VideoReaderState*, AudioBuffer& ab_ptr);
 
+	int processAVIntoFrames(VideoReaderState* state);
 	int processVideoIntoFrames(VideoReaderState* state);
 	int processAudioIntoFrames(VideoReaderState* state);
 
 	int processVideoPacketsIntoFrames();
-	int processVideoPacketsIntoFrames(VideoReaderState*);
+	int processVideoPacketsIntoFrames(VideoReaderState* state);
+
+	int processAudioPacketsIntoFrames();
+	int processAudioPacketsIntoFrames(VideoReaderState* state);
 
 	ErrorCode trackToFrame(VideoReaderState* state, int64_t targetPts);
 	ErrorCode trackToFrame(int64_t targetPts);

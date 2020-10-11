@@ -130,6 +130,14 @@ ErrorCode CMediaConverter::readAVFrame(FBPtr& fb_ptr, AudioBuffer& audioBuffer)
 
 ErrorCode CMediaConverter::readAVFrame(VideoReaderState* state, FBPtr& fb_ptr, AudioBuffer& audioBuffer)
 {
+    int response = processAVIntoFrames(state);
+
+    if (response == AVERROR_EOF)
+    {
+        avcodec_flush_buffers(state->audio_codec_ctx);
+        return ErrorCode::FILE_EOF;
+    }
+
     return ErrorCode::SUCCESS;
 }
 
@@ -191,8 +199,31 @@ int CMediaConverter::processVideoPacketsIntoFrames(VideoReaderState* state)
     return response;
 }
 
+int CMediaConverter::processAudioPacketsIntoFrames()
+{
+    return processAudioPacketsIntoFrames(&m_vrState);
+}
+
+int CMediaConverter::processAudioPacketsIntoFrames(VideoReaderState* state)
+{
+    int response = readFrame(state);
+
+    if (response >= 0)
+        return processAudioIntoFrames(state);
+
+    return response;
+}
+
+int CMediaConverter::processAVIntoFrames(VideoReaderState* state)
+{
+    return 0;
+}
+
 int CMediaConverter::processVideoIntoFrames(VideoReaderState* state)
 {
+    if (!state->video_codec_ctx)
+        return (int)ErrorCode::NO_CODEC_CTX;
+
     int response = 0;
     //send back and receive decoded frames, until frames can't be read
     do {
@@ -228,8 +259,7 @@ int CMediaConverter::processAudioIntoFrames(VideoReaderState* state)
     if (!state->audio_codec_ctx)
         return (int)ErrorCode::NO_CODEC_CTX;
 
-    int response = readFrame(state);
-
+    int response = 0;
     //send back and receive decoded frames, until frames can't be read
     do {
         if (state->av_packet->stream_index != state->audio_stream_index)
