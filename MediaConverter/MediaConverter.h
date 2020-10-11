@@ -18,6 +18,7 @@ extern "C"
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libswscale/swscale.h>
+#include <libswresample/swresample.h>
 }
 
 enum class ErrorCode : int
@@ -33,12 +34,15 @@ enum class ErrorCode : int
 	NO_VID_STREAM,
 	NO_CODEC_CTX,
 	CODEC_CTX_UNINIT,
+	NO_SWR_CTX,
+	NO_SWR_CONVERT,
 	NO_FRAME,
 	NO_PACKET,
 	PKT_NOT_DECODED,
 	PKT_NOT_RECEIVED,
 	NO_SCALER,
 	SEEK_FAILED,
+	NO_DATA_AVAIL,
 	REPEATING_FRAME
 };
 
@@ -52,7 +56,7 @@ public:
 		height = other.height;
 		frame_buffer = other.frame_buffer;
 		av_format_ctx = other.av_format_ctx;
-		av_codec_ctx = other.av_codec_ctx;
+		video_codec_ctx = other.video_codec_ctx;
 		av_frame = other.av_frame;
 		av_packet = other.av_packet;
 		sws_scaler_ctx = other.sws_scaler_ctx;
@@ -72,6 +76,13 @@ public:
 		avg_frame_rate.num = other.avg_frame_rate.num;
 		avg_frame_rate.den = other.avg_frame_rate.den;
 		pkt_size = other.pkt_size;
+		audio_codec_ctx = other.audio_codec_ctx;
+		audio_stream_index = other.audio_stream_index;
+		sample_fmt = other.sample_fmt;
+		sample_rate = other.sample_rate;
+		frame_size = other.frame_size;
+		num_channels = other.num_channels;
+		data_size = other.data_size;
 	}
 	~VideoReaderState() {}
 	bool IsEqual(const VideoReaderState& other)
@@ -80,7 +91,7 @@ public:
 			height == other.height &&
 			frame_buffer == other.frame_buffer &&
 			av_format_ctx == other.av_format_ctx &&
-			av_codec_ctx == other.av_codec_ctx &&
+			video_codec_ctx == other.video_codec_ctx &&
 			av_frame == other.av_frame &&
 			av_packet == other.av_packet &&
 			sws_scaler_ctx == other.sws_scaler_ctx &&
@@ -99,7 +110,14 @@ public:
 			duration == other.duration &&
 			avg_frame_rate.num == other.avg_frame_rate.num &&
 			avg_frame_rate.den == other.avg_frame_rate.den &&
-			pkt_size == other.pkt_size;
+			pkt_size == other.pkt_size &&
+			audio_codec_ctx == other.audio_codec_ctx &&
+			audio_stream_index == other.audio_stream_index &&
+			sample_fmt == other.sample_fmt &&
+			sample_rate == other.sample_rate &&
+			frame_size == other.frame_size &&
+			num_channels == other.num_channels &&
+			data_size == other.data_size;
 	}
 
 	int FPS() const
@@ -122,12 +140,27 @@ public:
 		return (int)ret;
 	}
 
+	AVCodecContext* GetCodecCtxFromPkt()
+	{
+		return GetCodecCtxFromPkt(av_packet);
+	}
+
+	AVCodecContext* GetCodecCtxFromPkt(AVPacket* pkt)
+	{
+		if (pkt->stream_index == video_stream_index)
+			return video_codec_ctx;
+		else if (pkt->stream_index == audio_stream_index)
+			return audio_codec_ctx;
+
+		return nullptr;
+	}
+
 	int width = 0;
 	int height = 0;
 	uint8_t* frame_buffer = nullptr;
 
 	AVFormatContext* av_format_ctx = nullptr;
-	AVCodecContext* av_codec_ctx = nullptr;
+	AVCodecContext* video_codec_ctx = nullptr;
 	AVFrame* av_frame = nullptr;
 	AVPacket* av_packet = nullptr;
 	SwsContext* sws_scaler_ctx = nullptr;
@@ -146,12 +179,24 @@ public:
 	int64_t duration = -1;
 	AVRational avg_frame_rate = { -1, -1 };
 	size_t pkt_size = -1;
+
+	//Audio details
+	AVCodecContext* audio_codec_ctx = nullptr;
+	SwrContext* swr_ctx = nullptr;
+	int got_picture = -1;
+	int audio_stream_index = -1;
+	AVSampleFormat sample_fmt = AV_SAMPLE_FMT_NONE;
+	int frame_size = 0;
+	int num_channels = 0;
+	int sample_rate = 0;
+	int data_size = 0;
 };
 
 // This class is exported from the dll
 class MEDIACONVERTER_API CMediaConverter 
 {
 	typedef std::unique_ptr<unsigned char[]> FBPtr;
+	typedef std::vector<uint8_t> AudioBuffer;
 
 public:
 	CMediaConverter(void);
@@ -160,26 +205,29 @@ public:
 	ErrorCode openVideoReader(const char* filename);
 	ErrorCode openVideoReader(VideoReaderState* state, const char* filename);
 
-	ErrorCode readVideoReaderFrame(VideoReaderState* state, FBPtr& fb_ptr, bool inReverse = false);
-	ErrorCode readVideoReaderFrame(FBPtr& fb_ptr, bool inReverse = false);
+	ErrorCode readAVFrame(VideoReaderState* state, FBPtr& fb_ptr, AudioBuffer& audioBuffer);
+	ErrorCode readAVFrame(FBPtr& fb_ptr, AudioBuffer& audioBuffer);
 
-	ErrorCode readVideoReaderFrame(VideoReaderState* state, unsigned char** frameBuffer, bool requestFlush = false); //unmanaged data version, creates heap data in function
-	ErrorCode readVideoReaderFrame(unsigned char** frameBuffer, bool requestFlush = false); //unmanaged data version, creates heap data in function
+	ErrorCode readVideoFrame(VideoReaderState* state, FBPtr& fb_ptr);
+	ErrorCode readVideoFrame(FBPtr& fb_ptr);
+
+	ErrorCode readAudioFrame(VideoReaderState* state, AudioBuffer& audioBuffer);
+	ErrorCode readAudioFrame(AudioBuffer& audioBuffer);
 
 	int readFrame();
 	int readFrame(VideoReaderState* state);
 
-	int sendPacket();
-	int sendPacket(VideoReaderState* state);
-
-	int receiveFrame();
-	int receiveFrame(VideoReaderState* state);
-
 	int outputToBuffer(FBPtr& fb_ptr);
 	int outputToBuffer(VideoReaderState*, FBPtr& fb_ptr);
 
-	int processPacketsIntoFrames(VideoReaderState* state, bool requestFlush = false);
-	int processPacketsIntoFrames(bool requestFlush = false);
+	int outputToAudioBuffer(AudioBuffer& ab_ptr);
+	int outputToAudioBuffer(VideoReaderState*, AudioBuffer& ab_ptr);
+
+	int processVideoIntoFrames(VideoReaderState* state);
+	int processAudioIntoFrames(VideoReaderState* state);
+
+	int processVideoPacketsIntoFrames();
+	int processVideoPacketsIntoFrames(VideoReaderState*);
 
 	ErrorCode trackToFrame(VideoReaderState* state, int64_t targetPts);
 	ErrorCode trackToFrame(int64_t targetPts);
@@ -192,6 +240,9 @@ public:
 
 	ErrorCode closeVideoReader(VideoReaderState* state);
 	ErrorCode closeVideoReader();
+
+	ErrorCode readVideoReaderFrame(VideoReaderState* state, unsigned char** frameBuffer, bool requestFlush = false); //unmanaged data version, creates heap data in function
+	ErrorCode readVideoReaderFrame(unsigned char** frameBuffer, bool requestFlush = false); //unmanaged data version, creates heap data in function
 
 	VideoReaderState& VrState() { return m_vrState; }
 private:
