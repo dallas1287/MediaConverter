@@ -81,8 +81,6 @@ ErrorCode CMediaConverter::openVideoReader(VideoReaderState* state, const char* 
 
             if (state->audio_codec_ctx->channel_layout == 0)
                 state->audio_codec_ctx->channel_layout = AV_CH_FRONT_LEFT | AV_CH_FRONT_RIGHT;
-
-            state->sample_fmt = state->audio_codec_ctx->sample_fmt;
         }
     }
 
@@ -202,7 +200,7 @@ int CMediaConverter::processVideoIntoFrames(VideoReaderState* state)
 
     //retrieve stats
     if(response == (int)ErrorCode::SUCCESS)
-        state->frameData.FillDataFromFrame(state->av_frame);
+        state->videoFrameData.FillDataFromFrame(state->av_frame);
 
     return response;
 }
@@ -234,15 +232,7 @@ int CMediaConverter::processAudioIntoFrames(VideoReaderState* state)
     } while (readFrame(state) >= 0);
 
     //store the linesize if necessary
-    if (state->line_size < 0 && state->av_frame->linesize[0] > 0)
-        state->line_size = state->av_frame->linesize[0];
-    if (state->num_channels < 0 && state->av_frame->channels > 0)
-        state->num_channels = state->av_frame->channels;
-    if (state->sample_rate < 0 && state->av_frame->sample_rate > 0)
-        state->sample_rate = state->av_frame->sample_rate;
-    if (state->num_samples < state->av_frame->nb_samples)
-        state->num_samples = state->av_frame->nb_samples;
-    state->audio_pts = state->av_frame->pts;
+    state->audioFrameData.FillDataFromFrame(state->av_frame);
 
     return response;
 }
@@ -257,7 +247,7 @@ int CMediaConverter::readFrame(VideoReaderState* state)
     int ret = av_read_frame(state->av_format_ctx, state->av_packet);
     //retrieve stats
     if(ret == (int)ErrorCode::SUCCESS)
-        state->frameData.FillDataFromPacket(state->av_packet);
+        state->videoFrameData.FillDataFromPacket(state->av_packet);
 
     return ret;
 }
@@ -310,38 +300,29 @@ int CMediaConverter::outputToAudioBuffer(AudioBuffer& audioBuffer)
 
 int CMediaConverter::outputToAudioBuffer(VideoReaderState* state, AudioBuffer& audioBuffer)
 {
-    int num_samples = state->av_frame->nb_samples;
-    int num_channels = state->av_frame->channels;
-    int bytes_per_sample = av_get_bytes_per_sample(state->sample_fmt);
-    auto packed = av_get_packed_sample_fmt(state->sample_fmt);
-    int sample_rate = state->av_frame->sample_rate;
-    auto linesize = state->av_frame->linesize;
-    int ls;
-    state->buffer_size = av_samples_get_buffer_size(&ls, num_channels, num_samples, packed, 1);
-
-    if (audioBuffer.size() != state->buffer_size && state->buffer_size > 0)
-        audioBuffer.resize(ls);
+    if (audioBuffer.size() != state->AudioBufferSize() && state->AudioBufferSize() > 0)
+        audioBuffer.resize(state->AudioBufferSize());
     else
         return (int)ErrorCode::NO_DATA_AVAIL;
 
     auto ptr = &audioBuffer[0];
     
-    state->swr_ctx = swr_alloc_set_opts(nullptr, AV_CH_FRONT_LEFT | AV_CH_FRONT_RIGHT, AV_SAMPLE_FMT_FLT, sample_rate,
-        state->audio_codec_ctx->channel_layout, state->sample_fmt, sample_rate, 0, nullptr);
+    state->swr_ctx = swr_alloc_set_opts(nullptr, AV_CH_FRONT_LEFT | AV_CH_FRONT_RIGHT, AV_SAMPLE_FMT_FLT, state->SampleRate(),
+        state->audio_codec_ctx->channel_layout, state->AudioSampleFormat(), state->SampleRate(), 0, nullptr);
 
     if (!state->swr_ctx)
         return (int)ErrorCode::NO_SWR_CTX;
 
     swr_init(state->swr_ctx);
 
-    int got_samples = swr_convert(state->swr_ctx, &ptr, num_samples, (const uint8_t**)state->av_frame->extended_data, state->av_frame->nb_samples);
+    int got_samples = swr_convert(state->swr_ctx, &ptr, state->NumSamples(), (const uint8_t**)state->av_frame->extended_data, state->av_frame->nb_samples);
 
     if(got_samples < 0)
         return (int)ErrorCode::NO_SWR_CONVERT;
 
     while (got_samples > 0)
     {
-        got_samples = swr_convert(state->swr_ctx, &ptr, num_samples, nullptr, 0);
+        got_samples = swr_convert(state->swr_ctx, &ptr, state->NumSamples(), nullptr, 0);
         if (got_samples < 0)
             return (int)ErrorCode::NO_SWR_CONVERT;
     }
@@ -363,25 +344,25 @@ ErrorCode CMediaConverter::trackToFrame(VideoReaderState* state, int64_t targetP
     if (ret != (int)ErrorCode::SUCCESS)
         return (ErrorCode)ret;
     int64_t interval = state->FrameInterval() * state->FPS(); // interval starts at 1 second previous
-    int64_t previous = state->frameData.frame_pts;
-    while (!WithinTolerance(targetPts, state->frameData.frame_pts, state->FrameInterval() - 10))
+    int64_t previous = state->VideoFramePts();
+    while (!WithinTolerance(targetPts, state->VideoFramePts(), state->FrameInterval() - 10))
     {
-        if (state->frameData.frame_pts < targetPts)
+        if (state->VideoFramePts() < targetPts)
         {
             processVideoPacketsIntoFrames(state);
         }
         else
         {
             interval *= 2; //double interval each time through to speed up seek
-            seekToFrame(state, state->frameData.frame_pts - interval, true);
+            seekToFrame(state, state->VideoFramePts() - interval, true);
             auto ret = processVideoPacketsIntoFrames(state);
             if (ret != (int)ErrorCode::SUCCESS)
                 return (ErrorCode)ret;
         }
 
-        if (previous == state->frameData.frame_pts)
+        if (previous == state->VideoFramePts())
             return ErrorCode::SUCCESS;
-        previous = state->frameData.frame_pts;
+        previous = state->VideoFramePts();
     }
 
     return ErrorCode::SUCCESS;

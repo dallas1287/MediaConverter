@@ -51,13 +51,13 @@ enum class ErrorCode : int
 class MEDIACONVERTER_API VideoReaderState
 {
 public:
-	struct FrameData
+	struct VideoFrameData
 	{
 	public:
-		FrameData() {}
-		FrameData(const FrameData& other) { *this = other; }
-		~FrameData() {}
-		FrameData& operator=(const FrameData& other)
+		VideoFrameData() {}
+		VideoFrameData(const VideoFrameData& other) { *this = other; }
+		~VideoFrameData() {}
+		VideoFrameData& operator=(const VideoFrameData& other)
 		{
 			frame_number = other.frame_number;
 			pkt_pts = other.pkt_pts;
@@ -68,7 +68,7 @@ public:
 			pkt_size = other.pkt_size;
 			return *this;
 		}
-		bool operator==(const FrameData& other)
+		bool operator==(const VideoFrameData& other)
 		{
 			return frame_number == other.frame_number &&
 				pkt_pts == other.pkt_pts &&
@@ -99,7 +99,14 @@ public:
 			pkt_dts = packet->dts;
 			return true;
 		}
-
+		int FrameNumber() { return frame_number; }
+		int64_t PktPts() { return pkt_pts; }
+		int64_t FramePts() { return frame_pts; }
+		int64_t PktDts() { return pkt_dts; }
+		int64_t FramePktDts() { return frame_pkt_dts; }
+		int KeyFrame() { return key_frame; }
+		size_t PktSize() { return pkt_size; }
+	private:
 		int frame_number = -1;
 		int64_t pkt_pts = -1;
 		int64_t frame_pts = -1;
@@ -107,6 +114,71 @@ public:
 		int64_t frame_pkt_dts = -1; //frame copies pkt_dts when it grabs frame data
 		int key_frame = -1;
 		size_t pkt_size = -1;
+	};
+
+	struct AudioFrameData
+	{
+		AudioFrameData() {}
+		AudioFrameData(const AudioFrameData& other) { *this = other; }
+		~AudioFrameData() {}
+		AudioFrameData& operator=(const AudioFrameData& other)
+		{
+			num_channels = other.num_channels;
+			sample_rate = other.sample_rate;
+			line_size = other.line_size;
+			num_samples = other.num_samples;
+			audio_pts = other.audio_pts;
+
+			return *this;
+		}
+		bool operator==(const AudioFrameData& other)
+		{
+			return num_channels == other.num_channels &&
+			sample_rate == other.sample_rate &&
+			line_size == other.line_size &&
+			num_samples == other.num_samples &&
+			audio_pts == other.audio_pts;
+		}
+
+		//the data provided by the frame isn't necessarily the same for each frame
+		//so we selectively update values based on certain needs 
+		bool FillDataFromFrame(AVFrame* frame)
+		{
+			if (!frame)
+				return false;
+
+			if (line_size < 0 && frame->linesize[0] > 0)
+				line_size = frame->linesize[0];
+			if (num_channels < 0 && frame->channels > 0)
+				num_channels = frame->channels;
+			if (sample_rate < 0 && frame->sample_rate > 0)
+				sample_rate = frame->sample_rate;
+			if (num_samples < frame->nb_samples)
+				num_samples = frame->nb_samples;
+			
+			audio_pts = frame->pts;
+			return true;
+		}
+
+		int BufferSize(AVSampleFormat fmt)
+		{
+			auto packed = av_get_packed_sample_fmt(fmt);
+			int linesize = 0;
+			return av_samples_get_buffer_size(&linesize, num_channels, num_samples, packed, 1);
+		}
+
+		int Channels() { return num_channels; }
+		int SampleRate() { return sample_rate; }
+		int LineSize() { return line_size; }
+		int NumSamples() { return num_samples; }
+		int64_t AudioPts() { return audio_pts; }
+
+	private:
+		int num_channels = -1;
+		int sample_rate = -1;
+		int line_size = -1;
+		int num_samples = -1;
+		int64_t audio_pts = -1;
 	};
 
 	VideoReaderState() {}
@@ -120,11 +192,6 @@ public:
 		video_stream_index = other.video_stream_index;
 		audio_codec_ctx = other.audio_codec_ctx;
 		audio_stream_index = other.audio_stream_index;
-		sample_fmt = other.sample_fmt;
-		sample_rate = other.sample_rate;
-		frame_size = other.frame_size;
-		num_channels = other.num_channels;
-		data_size = other.data_size;
 	}
 	~VideoReaderState() {}
 	bool IsEqual(const VideoReaderState& other)
@@ -136,12 +203,7 @@ public:
 			sws_scaler_ctx == other.sws_scaler_ctx &&
 			video_stream_index == other.video_stream_index &&
 			audio_codec_ctx == other.audio_codec_ctx &&
-			audio_stream_index == other.audio_stream_index &&
-			sample_fmt == other.sample_fmt &&
-			sample_rate == other.sample_rate &&
-			frame_size == other.frame_size &&
-			num_channels == other.num_channels &&
-			data_size == other.data_size;
+			audio_stream_index == other.audio_stream_index;
 	}
 
 	int FPS() const
@@ -180,12 +242,26 @@ public:
 
 	bool HasVideoStream() const { return video_stream_index >= 0; }
 	bool HasAudioStream() const { return audio_stream_index >= 0; }
-	int SampleRate() { return sample_rate; }
-	int BufferSize() { return buffer_size; }
-	int Channels() { return num_channels; }
-	int NumSamples() { return num_samples; }
-	int LineSize() { return line_size; }
-	int BytesPerSample() { return av_get_bytes_per_sample(sample_fmt); }
+
+	//AudioFrameData accessors - these change per frame
+	int SampleRate() { return audioFrameData.SampleRate(); }
+	int AudioBufferSize() { return audioFrameData.BufferSize(AudioSampleFormat()); }
+	int Channels() { return audioFrameData.Channels(); }
+	int NumSamples() { return audioFrameData.NumSamples(); }
+	int LineSize() { return audioFrameData.LineSize(); }
+	int BytesPerSample() { return av_get_bytes_per_sample(AudioSampleFormat()); }
+	int64_t AudioPts() { return audioFrameData.AudioPts(); }
+
+	//VideoFrameData accessors - these change per frame 
+	int VideoFrameNumber() { return videoFrameData.FrameNumber(); }
+	int64_t PktPts() { return videoFrameData.PktPts(); }
+	int64_t VideoFramePts() { return videoFrameData.FramePts(); }
+	int64_t PktDts() { return videoFrameData.PktDts(); }
+	int64_t FramePktDts() { return videoFrameData.FramePktDts(); }
+	int KeyFrame() { return videoFrameData.KeyFrame(); }
+	size_t VideoPktSize() { return videoFrameData.PktSize(); }
+
+	//File data accessors - these are constant and read when the file is opened
 	int64_t VideoDuration() const
 	{ 
 		if (!HasVideoStream())
@@ -280,6 +356,13 @@ public:
 			return 0.0;
 		return av_q2d(AudioTimebase());
 	}
+	int AudioFrameSize()
+	{
+		if (!HasAudioStream() || !audio_codec_ctx)
+			return 0;
+
+		return audio_codec_ctx->frame_size;
+	}
 
 	const char* CodecName()
 	{
@@ -297,6 +380,14 @@ public:
 		return av_codec->long_name;
 	}
 
+	AVSampleFormat AudioSampleFormat()
+	{
+		if (!HasAudioStream() || !audio_codec_ctx)
+			return AV_SAMPLE_FMT_NONE;
+
+		return audio_codec_ctx->sample_fmt;
+	}
+
 	bool IsRationalValid(const AVRational& rational) const
 	{
 		//num can be 0 but den can't 
@@ -312,22 +403,14 @@ public:
 	SwsContext* sws_scaler_ctx = nullptr;
 	int video_stream_index = -1;
 
-	FrameData frameData;
+	VideoFrameData videoFrameData;
 
 	//Audio details
 	AVCodecContext* audio_codec_ctx = nullptr;
 	SwrContext* swr_ctx = nullptr;
-	int got_picture = -1;
 	int audio_stream_index = -1;
-	AVSampleFormat sample_fmt = AV_SAMPLE_FMT_NONE;
-	int frame_size = 0;
-	int num_channels = -1;
-	int sample_rate = -1;
-	int data_size = 0;
-	int buffer_size = -1;
-	int line_size = -1;
-	int num_samples = -1;
-	int64_t audio_pts = -1;
+
+	AudioFrameData audioFrameData;
 };
 
 // This class is exported from the dll
