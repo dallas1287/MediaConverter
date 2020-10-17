@@ -54,16 +54,12 @@ public:
 	VideoReaderState() {}
 	VideoReaderState(const VideoReaderState& other)
 	{
-		width = other.width;
-		height = other.height;
-		frame_buffer = other.frame_buffer;
 		av_format_ctx = other.av_format_ctx;
 		video_codec_ctx = other.video_codec_ctx;
 		av_frame = other.av_frame;
 		av_packet = other.av_packet;
 		sws_scaler_ctx = other.sws_scaler_ctx;
 		video_stream_index = other.video_stream_index;
-		codecName = other.codecName;
 		frame_number = other.frame_number;
 		frame_pts = other.frame_pts;
 		frame_pkt_dts = other.frame_pkt_dts;
@@ -82,16 +78,12 @@ public:
 	~VideoReaderState() {}
 	bool IsEqual(const VideoReaderState& other)
 	{
-		return width == other.width &&
-			height == other.height &&
-			frame_buffer == other.frame_buffer &&
-			av_format_ctx == other.av_format_ctx &&
+		return av_format_ctx == other.av_format_ctx &&
 			video_codec_ctx == other.video_codec_ctx &&
 			av_frame == other.av_frame &&
 			av_packet == other.av_packet &&
 			sws_scaler_ctx == other.sws_scaler_ctx &&
 			video_stream_index == other.video_stream_index &&
-			codecName == other.codecName &&
 			frame_number == other.frame_number &&
 			frame_pts == other.frame_pts &&
 			frame_pkt_dts == other.frame_pkt_dts &&
@@ -194,6 +186,18 @@ public:
 			return 0;
 		return av_format_ctx->streams[video_stream_index]->nb_frames;
 	}
+	int VideoWidth() const
+	{
+		if (!HasVideoStream())
+			return 0;
+		return av_format_ctx->streams[video_stream_index]->codecpar->width;
+	}
+	int VideoHeight() const
+	{
+		if (!HasVideoStream())
+			return 0;
+		return av_format_ctx->streams[video_stream_index]->codecpar->height;
+	}
 
 	int64_t AudioDuration()
 	{
@@ -233,6 +237,22 @@ public:
 		return av_q2d(AudioTimebase());
 	}
 
+	const char* CodecName()
+	{
+		int streamIndex = HasVideoStream() ? video_stream_index : HasAudioStream() ? audio_stream_index : -1;
+		if (streamIndex == -1)
+			return nullptr;
+
+		AVCodecParameters* av_codec_params = av_format_ctx->streams[streamIndex]->codecpar;
+		if (!av_codec_params)
+			return nullptr;
+		AVCodec* av_codec = avcodec_find_decoder(av_codec_params->codec_id);
+		if (!av_codec)
+			return nullptr;
+
+		return av_codec->long_name;
+	}
+
 	bool IsRationalValid(const AVRational& rational) const
 	{
 		//num can be 0 but den can't 
@@ -240,18 +260,14 @@ public:
 		return (rational.den > 0 && rational.num >= 0);
 	}
 
-	int width = 0;
-	int height = 0;
-	uint8_t* frame_buffer = nullptr;
+	AVFrame* av_frame = nullptr;
+	AVPacket* av_packet = nullptr;
 
 	AVFormatContext* av_format_ctx = nullptr;
 	AVCodecContext* video_codec_ctx = nullptr;
-	AVFrame* av_frame = nullptr;
-	AVPacket* av_packet = nullptr;
 	SwsContext* sws_scaler_ctx = nullptr;
 	int video_stream_index = -1;
 
-	const char* codecName = nullptr;
 	int frame_number = -1;
 	int64_t pkt_pts = -1;
 	int64_t frame_pts = -1;

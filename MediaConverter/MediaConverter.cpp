@@ -16,8 +16,6 @@ ErrorCode CMediaConverter::openVideoReader(const char* filename)
 
 ErrorCode CMediaConverter::openVideoReader(VideoReaderState* state, const char* filename)
 {
-    auto& width = state->width;
-    auto& height = state->height;
     auto& av_format_ctx = state->av_format_ctx;
     auto& av_codec_ctx = state->video_codec_ctx;
     auto& av_frame = state->av_frame;
@@ -53,10 +51,6 @@ ErrorCode CMediaConverter::openVideoReader(VideoReaderState* state, const char* 
         if (av_codec_params->codec_type == AVMEDIA_TYPE_VIDEO)
         {
             state->video_stream_index = i;
-            width = av_codec_params->width;
-            height = av_codec_params->height;
-
-            state->codecName = av_codec->long_name;
 
             av_codec_ctx = avcodec_alloc_context3(av_codec);
             if (!av_codec_ctx)
@@ -280,16 +274,14 @@ int CMediaConverter::outputToBuffer(VideoReaderState* state, FBPtr& fb_ptr)
 {
     auto& sws_scaler_ctx = state->sws_scaler_ctx;
     auto& av_codec_ctx = state->video_codec_ctx;
-    auto& width = state->width;
-    auto& height = state->height;
     auto& av_frame = state->av_frame;
     if (!av_codec_ctx)
         return -1;
     //setup scaler
     if (!sws_scaler_ctx)
     {
-        sws_scaler_ctx = sws_getContext(width, height, av_codec_ctx->pix_fmt, //input
-            width, height, AV_PIX_FMT_RGB0, //output
+        sws_scaler_ctx = sws_getContext(state->VideoWidth(), state->VideoHeight(), av_codec_ctx->pix_fmt, //input
+            state->VideoWidth(), state->VideoHeight(), AV_PIX_FMT_RGB0, //output
             SWS_BILINEAR, NULL, NULL, NULL); //options
     }
     if (!sws_scaler_ctx)
@@ -303,10 +295,11 @@ int CMediaConverter::outputToBuffer(VideoReaderState* state, FBPtr& fb_ptr)
 
     fb_ptr.reset(new unsigned char[size]);
 
+    //using 4 here because RGB0 designates 4 channels of values
     unsigned char* dest[4] = { fb_ptr.get(), NULL, NULL, NULL };
-    int dest_linesize[4] = { width * 4, 0, 0, 0 };
+    int dest_linesize[4] = { state->VideoWidth() * 4, 0, 0, 0 };
 
-    sws_scale(sws_scaler_ctx, av_frame->data, av_frame->linesize, 0, height, dest, dest_linesize);
+    sws_scale(sws_scaler_ctx, av_frame->data, av_frame->linesize, 0, state->VideoHeight(), dest, dest_linesize);
 
     av_frame_unref(av_frame);
 
@@ -456,8 +449,6 @@ ErrorCode CMediaConverter::readVideoReaderFrame(unsigned char** frameBuffer, boo
 
 ErrorCode CMediaConverter::readVideoReaderFrame(VideoReaderState* state, unsigned char** frameBuffer, bool requestFlush)
 {
-    auto& width = state->width;
-    auto& height = state->height;
     auto& av_format_ctx = state->av_format_ctx;
     auto& av_codec_ctx = state->video_codec_ctx;
     auto& av_frame = state->av_frame;
@@ -476,8 +467,8 @@ ErrorCode CMediaConverter::readVideoReaderFrame(VideoReaderState* state, unsigne
     //setup scaler
     if (!sws_scaler_ctx)
     {
-        sws_scaler_ctx = sws_getContext(width, height, av_codec_ctx->pix_fmt, //input
-            width, height, AV_PIX_FMT_RGB0, //output
+        sws_scaler_ctx = sws_getContext(state->VideoWidth(), state->VideoHeight(), av_codec_ctx->pix_fmt, //input
+            state->VideoWidth(), state->VideoHeight(), AV_PIX_FMT_RGB0, //output
             SWS_BILINEAR, NULL, NULL, NULL); //options
     }
     if (!sws_scaler_ctx)
@@ -487,10 +478,11 @@ ErrorCode CMediaConverter::readVideoReaderFrame(VideoReaderState* state, unsigne
     uint64_t size = w * h * 4;
     unsigned char* output = new unsigned char[size];
 
+    //using 4 here because RGB0 designates 4 channels of values
     unsigned char* dest[4] = { output, NULL, NULL, NULL };
-    int dest_linesize[4] = { width * 4, 0, 0, 0 };
+    int dest_linesize[4] = { state->VideoWidth() * 4, 0, 0, 0 };
 
-    sws_scale(sws_scaler_ctx, av_frame->data, av_frame->linesize, 0, height, dest, dest_linesize);
+    sws_scale(sws_scaler_ctx, av_frame->data, av_frame->linesize, 0, state->VideoHeight(), dest, dest_linesize);
 
     *frameBuffer = output;
 
