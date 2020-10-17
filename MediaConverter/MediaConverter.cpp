@@ -201,11 +201,8 @@ int CMediaConverter::processVideoIntoFrames(VideoReaderState* state)
     } while (readFrame(state) >= 0);
 
     //retrieve stats
-    state->frame_number = state->av_frame->coded_picture_number;
-    state->frame_pts = state->av_frame->pts;
-    state->frame_pkt_dts = state->av_frame->pkt_dts;
-    state->key_frame = state->av_frame->key_frame;
-    state->pkt_size = state->av_frame->pkt_size;
+    if(response == (int)ErrorCode::SUCCESS)
+        state->frameData.FillDataFromFrame(state->av_frame);
 
     return response;
 }
@@ -259,8 +256,8 @@ int CMediaConverter::readFrame(VideoReaderState* state)
 {
     int ret = av_read_frame(state->av_format_ctx, state->av_packet);
     //retrieve stats
-    state->pkt_pts = state->av_packet->pts;
-    state->pkt_dts = state->av_packet->dts;
+    if(ret == (int)ErrorCode::SUCCESS)
+        state->frameData.FillDataFromPacket(state->av_packet);
 
     return ret;
 }
@@ -366,25 +363,25 @@ ErrorCode CMediaConverter::trackToFrame(VideoReaderState* state, int64_t targetP
     if (ret != (int)ErrorCode::SUCCESS)
         return (ErrorCode)ret;
     int64_t interval = state->FrameInterval() * state->FPS(); // interval starts at 1 second previous
-    int64_t previous = state->frame_pts;
-    while (!WithinTolerance(targetPts, state->frame_pts, state->FrameInterval() - 10))
+    int64_t previous = state->frameData.frame_pts;
+    while (!WithinTolerance(targetPts, state->frameData.frame_pts, state->FrameInterval() - 10))
     {
-        if (state->frame_pts < targetPts)
+        if (state->frameData.frame_pts < targetPts)
         {
             processVideoPacketsIntoFrames(state);
         }
         else
         {
             interval *= 2; //double interval each time through to speed up seek
-            seekToFrame(state, state->frame_pts - interval, true);
+            seekToFrame(state, state->frameData.frame_pts - interval, true);
             auto ret = processVideoPacketsIntoFrames(state);
             if (ret != (int)ErrorCode::SUCCESS)
                 return (ErrorCode)ret;
         }
 
-        if (previous == state->frame_pts)
+        if (previous == state->frameData.frame_pts)
             return ErrorCode::SUCCESS;
-        previous = state->frame_pts;
+        previous = state->frameData.frame_pts;
     }
 
     return ErrorCode::SUCCESS;

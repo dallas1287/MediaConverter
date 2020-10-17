@@ -51,6 +51,64 @@ enum class ErrorCode : int
 class MEDIACONVERTER_API VideoReaderState
 {
 public:
+	struct FrameData
+	{
+	public:
+		FrameData() {}
+		FrameData(const FrameData& other) { *this = other; }
+		~FrameData() {}
+		FrameData& operator=(const FrameData& other)
+		{
+			frame_number = other.frame_number;
+			pkt_pts = other.pkt_pts;
+			frame_pts = other.frame_pts;
+			pkt_dts = other.pkt_dts;
+			frame_pkt_dts = other.frame_pkt_dts;
+			key_frame = other.key_frame;
+			pkt_size = other.pkt_size;
+			return *this;
+		}
+		bool operator==(const FrameData& other)
+		{
+			return frame_number == other.frame_number &&
+				pkt_pts == other.pkt_pts &&
+				frame_pts == other.frame_pts &&
+				pkt_dts == other.pkt_dts &&
+				frame_pkt_dts == other.frame_pkt_dts &&
+				key_frame == other.key_frame &&
+				pkt_size == other.pkt_size;
+		}
+
+		bool FillDataFromFrame(AVFrame* frame)
+		{
+			if (!frame)
+				return false;
+			frame_number = frame->coded_picture_number;
+			frame_pts = frame->pts;
+			frame_pkt_dts = frame->pkt_dts;
+			key_frame = frame->key_frame;
+			pkt_size = frame->pkt_size;
+			return true;
+		}
+
+		bool FillDataFromPacket(AVPacket* packet)
+		{
+			if (!packet)
+				return false;
+			pkt_pts = packet->pts;
+			pkt_dts = packet->dts;
+			return true;
+		}
+
+		int frame_number = -1;
+		int64_t pkt_pts = -1;
+		int64_t frame_pts = -1;
+		int64_t pkt_dts = -1;
+		int64_t frame_pkt_dts = -1; //frame copies pkt_dts when it grabs frame data
+		int key_frame = -1;
+		size_t pkt_size = -1;
+	};
+
 	VideoReaderState() {}
 	VideoReaderState(const VideoReaderState& other)
 	{
@@ -60,13 +118,6 @@ public:
 		av_packet = other.av_packet;
 		sws_scaler_ctx = other.sws_scaler_ctx;
 		video_stream_index = other.video_stream_index;
-		frame_number = other.frame_number;
-		frame_pts = other.frame_pts;
-		frame_pkt_dts = other.frame_pkt_dts;
-		pkt_pts = other.pkt_pts;
-		pkt_dts = other.pkt_dts;
-		key_frame = other.key_frame;
-		pkt_size = other.pkt_size;
 		audio_codec_ctx = other.audio_codec_ctx;
 		audio_stream_index = other.audio_stream_index;
 		sample_fmt = other.sample_fmt;
@@ -84,13 +135,6 @@ public:
 			av_packet == other.av_packet &&
 			sws_scaler_ctx == other.sws_scaler_ctx &&
 			video_stream_index == other.video_stream_index &&
-			frame_number == other.frame_number &&
-			frame_pts == other.frame_pts &&
-			frame_pkt_dts == other.frame_pkt_dts &&
-			pkt_pts == other.pkt_pts &&
-			pkt_dts == other.pkt_dts &&
-			key_frame == other.key_frame &&
-			pkt_size == other.pkt_size &&
 			audio_codec_ctx == other.audio_codec_ctx &&
 			audio_stream_index == other.audio_stream_index &&
 			sample_fmt == other.sample_fmt &&
@@ -268,13 +312,7 @@ public:
 	SwsContext* sws_scaler_ctx = nullptr;
 	int video_stream_index = -1;
 
-	int frame_number = -1;
-	int64_t pkt_pts = -1;
-	int64_t frame_pts = -1;
-	int64_t pkt_dts = -1;
-	int64_t frame_pkt_dts = -1; //frame copies pkt_dts when it grabs frame data
-	int key_frame = -1;
-	size_t pkt_size = -1;
+	FrameData frameData;
 
 	//Audio details
 	AVCodecContext* audio_codec_ctx = nullptr;
