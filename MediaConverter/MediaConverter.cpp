@@ -406,6 +406,7 @@ ErrorCode CMediaConverter::closeVideoReader()
 ErrorCode CMediaConverter::closeVideoReader(MediaReaderState* state)
 {
     sws_freeContext(state->sws_scaler_ctx);
+    swr_free(&state->swr_ctx);
     avformat_close_input(&state->av_format_ctx);
     avformat_free_context(state->av_format_ctx);
     avcodec_free_context(&state->video_codec_ctx);
