@@ -10,7 +10,8 @@
 #define MEDIACONVERTER_API __declspec(dllimport)
 #endif
 #include <vector>
-#include <iostream>
+#include <cmath>
+#include <memory>
 
 //ffmpeg includes
 extern "C"
@@ -48,9 +49,9 @@ enum class ErrorCode : int
 	NO_AUDIO_DEVICES
 };
 
-class MEDIACONVERTER_API VideoReaderState
+class MEDIACONVERTER_API MediaReaderState
 {
-public:
+private:
 	struct VideoFrameData
 	{
 	public:
@@ -181,8 +182,9 @@ public:
 		int64_t audio_pts = -1;
 	};
 
-	VideoReaderState() {}
-	VideoReaderState(const VideoReaderState& other)
+public:
+	MediaReaderState() {}
+	MediaReaderState(const MediaReaderState& other)
 	{
 		av_format_ctx = other.av_format_ctx;
 		video_codec_ctx = other.video_codec_ctx;
@@ -193,8 +195,8 @@ public:
 		audio_codec_ctx = other.audio_codec_ctx;
 		audio_stream_index = other.audio_stream_index;
 	}
-	~VideoReaderState() {}
-	bool IsEqual(const VideoReaderState& other)
+	~MediaReaderState() {}
+	bool IsEqual(const MediaReaderState& other)
 	{
 		return av_format_ctx == other.av_format_ctx &&
 			video_codec_ctx == other.video_codec_ctx &&
@@ -424,49 +426,49 @@ public:
 	ErrorCode loadFrame(const char* filename, int& width, int& height, unsigned char** data);
 
 	ErrorCode openVideoReader(const char* filename);
-	ErrorCode openVideoReader(VideoReaderState* state, const char* filename);
+	ErrorCode openVideoReader(MediaReaderState* state, const char* filename);
 
-	ErrorCode readVideoFrame(VideoReaderState* state, FBPtr& fb_ptr);
+	ErrorCode readVideoFrame(MediaReaderState* state, FBPtr& fb_ptr);
 	ErrorCode readVideoFrame(FBPtr& fb_ptr);
 
-	ErrorCode readAudioFrame(VideoReaderState* state, AudioBuffer& audioBuffer);
+	ErrorCode readAudioFrame(MediaReaderState* state, AudioBuffer& audioBuffer);
 	ErrorCode readAudioFrame(AudioBuffer& audioBuffer);
 
 	int readFrame();
-	int readFrame(VideoReaderState* state);
+	int readFrame(MediaReaderState* state);
 
 	int outputToBuffer(FBPtr& fb_ptr);
-	int outputToBuffer(VideoReaderState*, FBPtr& fb_ptr);
+	int outputToBuffer(MediaReaderState*, FBPtr& fb_ptr);
 
 	int outputToAudioBuffer(AudioBuffer& ab_ptr);
-	int outputToAudioBuffer(VideoReaderState*, AudioBuffer& ab_ptr);
+	int outputToAudioBuffer(MediaReaderState*, AudioBuffer& ab_ptr);
 
-	int processVideoIntoFrames(VideoReaderState* state);
-	int processAudioIntoFrames(VideoReaderState* state);
+	int processVideoIntoFrames(MediaReaderState* state);
+	int processAudioIntoFrames(MediaReaderState* state);
 
 	int processVideoPacketsIntoFrames();
-	int processVideoPacketsIntoFrames(VideoReaderState* state);
+	int processVideoPacketsIntoFrames(MediaReaderState* state);
 
 	int processAudioPacketsIntoFrames();
-	int processAudioPacketsIntoFrames(VideoReaderState* state);
+	int processAudioPacketsIntoFrames(MediaReaderState* state);
 
-	ErrorCode trackToFrame(VideoReaderState* state, int64_t targetPts);
+	ErrorCode trackToFrame(MediaReaderState* state, int64_t targetPts);
 	ErrorCode trackToFrame(int64_t targetPts);
 
-	ErrorCode seekToFrame(VideoReaderState* state, int64_t targetPts, bool inReverse = false);
+	ErrorCode seekToFrame(MediaReaderState* state, int64_t targetPts, bool inReverse = false);
 	ErrorCode seekToFrame(int64_t targetPts, bool inReverse = false);
 
-	ErrorCode seekToStart(VideoReaderState* state);
+	ErrorCode seekToStart(MediaReaderState* state);
 	ErrorCode seekToStart();
 
-	ErrorCode closeVideoReader(VideoReaderState* state);
+	ErrorCode closeVideoReader(MediaReaderState* state);
 	ErrorCode closeVideoReader();
 
-	ErrorCode readVideoReaderFrame(VideoReaderState* state, unsigned char** frameBuffer, bool requestFlush = false); //unmanaged data version, creates heap data in function
+	ErrorCode readVideoReaderFrame(MediaReaderState* state, unsigned char** frameBuffer, bool requestFlush = false); //unmanaged data version, creates heap data in function
 	ErrorCode readVideoReaderFrame(unsigned char** frameBuffer, bool requestFlush = false); //unmanaged data version, creates heap data in function
 
-	VideoReaderState& VrState() { return m_vrState; }
+	MediaReaderState& MRState() { return m_mrState; }
 private:
 	bool WithinTolerance(int64_t referencePts, int64_t targetPts, int64_t tolerance);
-	VideoReaderState m_vrState;
+	MediaReaderState m_mrState;
 };

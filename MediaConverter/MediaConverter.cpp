@@ -11,10 +11,10 @@ CMediaConverter::CMediaConverter()
 
 ErrorCode CMediaConverter::openVideoReader(const char* filename)
 {
-    return openVideoReader(&m_vrState, filename);
+    return openVideoReader(&m_mrState, filename);
 }
 
-ErrorCode CMediaConverter::openVideoReader(VideoReaderState* state, const char* filename)
+ErrorCode CMediaConverter::openVideoReader(MediaReaderState* state, const char* filename)
 {
     auto& av_format_ctx = state->av_format_ctx;
     auto& av_codec_ctx = state->video_codec_ctx;
@@ -97,10 +97,10 @@ ErrorCode CMediaConverter::openVideoReader(VideoReaderState* state, const char* 
 
 ErrorCode CMediaConverter::readVideoFrame(FBPtr& fb_ptr)
 {
-    return readVideoFrame(&m_vrState, fb_ptr);
+    return readVideoFrame(&m_mrState, fb_ptr);
 }
 
-ErrorCode CMediaConverter::readVideoFrame(VideoReaderState* state, FBPtr& fb_ptr)
+ErrorCode CMediaConverter::readVideoFrame(MediaReaderState* state, FBPtr& fb_ptr)
 {
     int response = processVideoPacketsIntoFrames(state);
 
@@ -115,10 +115,10 @@ ErrorCode CMediaConverter::readVideoFrame(VideoReaderState* state, FBPtr& fb_ptr
 
 ErrorCode CMediaConverter::readAudioFrame(AudioBuffer& audioBuffer)
 {
-    return readAudioFrame(&m_vrState, audioBuffer);
+    return readAudioFrame(&m_mrState, audioBuffer);
 }
 
-ErrorCode CMediaConverter::readAudioFrame(VideoReaderState* state, AudioBuffer& audioBuffer)
+ErrorCode CMediaConverter::readAudioFrame(MediaReaderState* state, AudioBuffer& audioBuffer)
 {
     int response = processAudioPacketsIntoFrames(state);
 
@@ -141,10 +141,10 @@ ErrorCode CMediaConverter::readAudioFrame(VideoReaderState* state, AudioBuffer& 
 */
 int CMediaConverter::processVideoPacketsIntoFrames()
 {
-    return processVideoPacketsIntoFrames(&m_vrState);
+    return processVideoPacketsIntoFrames(&m_mrState);
 }
 
-int CMediaConverter::processVideoPacketsIntoFrames(VideoReaderState* state)
+int CMediaConverter::processVideoPacketsIntoFrames(MediaReaderState* state)
 {
     //inital frame read, gives it an initial state to branch from
     //int response = av_read_frame(state->av_format_ctx, state->av_packet);
@@ -158,10 +158,10 @@ int CMediaConverter::processVideoPacketsIntoFrames(VideoReaderState* state)
 
 int CMediaConverter::processAudioPacketsIntoFrames()
 {
-    return processAudioPacketsIntoFrames(&m_vrState);
+    return processAudioPacketsIntoFrames(&m_mrState);
 }
 
-int CMediaConverter::processAudioPacketsIntoFrames(VideoReaderState* state)
+int CMediaConverter::processAudioPacketsIntoFrames(MediaReaderState* state)
 {
     int response = readFrame(state);
 
@@ -173,7 +173,7 @@ int CMediaConverter::processAudioPacketsIntoFrames(VideoReaderState* state)
     return response;
 }
 
-int CMediaConverter::processVideoIntoFrames(VideoReaderState* state)
+int CMediaConverter::processVideoIntoFrames(MediaReaderState* state)
 {
     if (!state->video_codec_ctx)
         return (int)ErrorCode::NO_CODEC_CTX;
@@ -205,7 +205,7 @@ int CMediaConverter::processVideoIntoFrames(VideoReaderState* state)
     return response;
 }
 
-int CMediaConverter::processAudioIntoFrames(VideoReaderState* state)
+int CMediaConverter::processAudioIntoFrames(MediaReaderState* state)
 {
     if (!state->audio_codec_ctx)
         return (int)ErrorCode::NO_CODEC_CTX;
@@ -239,10 +239,10 @@ int CMediaConverter::processAudioIntoFrames(VideoReaderState* state)
 
 int CMediaConverter::readFrame()
 {
-    return readFrame(&m_vrState);
+    return readFrame(&m_mrState);
 }
 
-int CMediaConverter::readFrame(VideoReaderState* state)
+int CMediaConverter::readFrame(MediaReaderState* state)
 {
     int ret = av_read_frame(state->av_format_ctx, state->av_packet);
     //retrieve stats
@@ -254,10 +254,10 @@ int CMediaConverter::readFrame(VideoReaderState* state)
 
 int CMediaConverter::outputToBuffer(FBPtr& fb_ptr)
 {
-    return outputToBuffer(&m_vrState, fb_ptr);
+    return outputToBuffer(&m_mrState, fb_ptr);
 }
 
-int CMediaConverter::outputToBuffer(VideoReaderState* state, FBPtr& fb_ptr)
+int CMediaConverter::outputToBuffer(MediaReaderState* state, FBPtr& fb_ptr)
 {
     auto& sws_scaler_ctx = state->sws_scaler_ctx;
     auto& av_codec_ctx = state->video_codec_ctx;
@@ -295,10 +295,10 @@ int CMediaConverter::outputToBuffer(VideoReaderState* state, FBPtr& fb_ptr)
 
 int CMediaConverter::outputToAudioBuffer(AudioBuffer& audioBuffer)
 {
-    return outputToAudioBuffer(&m_vrState, audioBuffer);
+    return outputToAudioBuffer(&m_mrState, audioBuffer);
 }
 
-int CMediaConverter::outputToAudioBuffer(VideoReaderState* state, AudioBuffer& audioBuffer)
+int CMediaConverter::outputToAudioBuffer(MediaReaderState* state, AudioBuffer& audioBuffer)
 {
     if (audioBuffer.size() != state->AudioBufferSize() && state->AudioBufferSize() > 0)
         audioBuffer.resize(state->AudioBufferSize());
@@ -334,10 +334,10 @@ int CMediaConverter::outputToAudioBuffer(VideoReaderState* state, AudioBuffer& a
 
 ErrorCode CMediaConverter::trackToFrame(int64_t targetPts)
 {
-    return trackToFrame(&m_vrState, targetPts);
+    return trackToFrame(&m_mrState, targetPts);
 }
 
-ErrorCode CMediaConverter::trackToFrame(VideoReaderState* state, int64_t targetPts)
+ErrorCode CMediaConverter::trackToFrame(MediaReaderState* state, int64_t targetPts)
 {
     seekToFrame(state, targetPts, true);
     auto ret = processVideoPacketsIntoFrames(state);
@@ -370,10 +370,10 @@ ErrorCode CMediaConverter::trackToFrame(VideoReaderState* state, int64_t targetP
 
 ErrorCode CMediaConverter::seekToFrame(int64_t targetPts, bool inReverse)
 {
-    return seekToFrame(&m_vrState, targetPts, inReverse);
+    return seekToFrame(&m_mrState, targetPts, inReverse);
 }
 
-ErrorCode CMediaConverter::seekToFrame(VideoReaderState* state, int64_t targetPts, bool inReverse)
+ErrorCode CMediaConverter::seekToFrame(MediaReaderState* state, int64_t targetPts, bool inReverse)
 {
     if (av_seek_frame(state->av_format_ctx, state->video_stream_index, targetPts, inReverse ? AVSEEK_FLAG_BACKWARD : AVSEEK_FLAG_ANY) >= 0)
     {
@@ -385,10 +385,10 @@ ErrorCode CMediaConverter::seekToFrame(VideoReaderState* state, int64_t targetPt
 
 ErrorCode CMediaConverter::seekToStart()
 {
-    return seekToStart(&m_vrState);
+    return seekToStart(&m_mrState);
 }
 
-ErrorCode CMediaConverter::seekToStart(VideoReaderState* state)
+ErrorCode CMediaConverter::seekToStart(MediaReaderState* state)
 {
     if (av_seek_frame(state->av_format_ctx, state->video_stream_index, 0, 0) >= 0)
     {
@@ -400,10 +400,10 @@ ErrorCode CMediaConverter::seekToStart(VideoReaderState* state)
 
 ErrorCode CMediaConverter::closeVideoReader()
 {
-    return closeVideoReader(&m_vrState);
+    return closeVideoReader(&m_mrState);
 }
 
-ErrorCode CMediaConverter::closeVideoReader(VideoReaderState* state)
+ErrorCode CMediaConverter::closeVideoReader(MediaReaderState* state)
 {
     sws_freeContext(state->sws_scaler_ctx);
     avformat_close_input(&state->av_format_ctx);
@@ -422,10 +422,10 @@ bool CMediaConverter::WithinTolerance(int64_t referencePts, int64_t targetPts, i
 
 ErrorCode CMediaConverter::readVideoReaderFrame(unsigned char** frameBuffer, bool requestFlush)
 {
-    return readVideoReaderFrame(&m_vrState, frameBuffer, requestFlush);
+    return readVideoReaderFrame(&m_mrState, frameBuffer, requestFlush);
 }
 
-ErrorCode CMediaConverter::readVideoReaderFrame(VideoReaderState* state, unsigned char** frameBuffer, bool requestFlush)
+ErrorCode CMediaConverter::readVideoReaderFrame(MediaReaderState* state, unsigned char** frameBuffer, bool requestFlush)
 {
     auto& av_format_ctx = state->av_format_ctx;
     auto& av_codec_ctx = state->video_codec_ctx;
