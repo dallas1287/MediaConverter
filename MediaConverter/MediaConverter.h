@@ -32,6 +32,7 @@ enum class ErrorCode : int
 	CODEC_UNOPENED,
 	NO_STREAMS,
 	NO_VID_STREAM,
+	NO_AUDIO_STREAM,
 	NO_CODEC_CTX,
 	CODEC_CTX_UNINIT,
 	NO_SWR_CTX,
@@ -43,7 +44,8 @@ enum class ErrorCode : int
 	NO_SCALER,
 	SEEK_FAILED,
 	NO_DATA_AVAIL,
-	REPEATING_FRAME
+	REPEATING_FRAME,
+	NO_AUDIO_DEVICES
 };
 
 class MEDIACONVERTER_API VideoReaderState
@@ -155,6 +157,17 @@ public:
 		return nullptr;
 	}
 
+	double Timebase() { return av_q2d(timebase); }
+	double FrameRate() { return av_q2d(avg_frame_rate); }
+	bool HasVideoStream() { return video_stream_index >= 0; }
+	bool HasAudioStream() { return audio_stream_index >= 0; }
+	int SampleRate() { return sample_rate; }
+	int BufferSize() { return buffer_size; }
+	int Channels() { return num_channels; }
+	int NumSamples() { return num_samples; }
+	int LineSize() { return line_size; }
+	int BytesPerSample() { return av_get_bytes_per_sample(sample_fmt); }
+
 	int width = 0;
 	int height = 0;
 	uint8_t* frame_buffer = nullptr;
@@ -187,9 +200,13 @@ public:
 	int audio_stream_index = -1;
 	AVSampleFormat sample_fmt = AV_SAMPLE_FMT_NONE;
 	int frame_size = 0;
-	int num_channels = 0;
-	int sample_rate = 0;
+	int num_channels = -1;
+	int sample_rate = -1;
 	int data_size = 0;
+	int buffer_size = -1;
+	int line_size = -1;
+	int num_samples = -1;
+	int64_t audio_pts = -1;
 };
 
 // This class is exported from the dll
@@ -204,9 +221,6 @@ public:
 
 	ErrorCode openVideoReader(const char* filename);
 	ErrorCode openVideoReader(VideoReaderState* state, const char* filename);
-
-	ErrorCode readAVFrame(VideoReaderState* state, FBPtr& fb_ptr, AudioBuffer& audioBuffer);
-	ErrorCode readAVFrame(FBPtr& fb_ptr, AudioBuffer& audioBuffer);
 
 	ErrorCode readVideoFrame(VideoReaderState* state, FBPtr& fb_ptr);
 	ErrorCode readVideoFrame(FBPtr& fb_ptr);
@@ -223,7 +237,6 @@ public:
 	int outputToAudioBuffer(AudioBuffer& ab_ptr);
 	int outputToAudioBuffer(VideoReaderState*, AudioBuffer& ab_ptr);
 
-	int processAVIntoFrames(VideoReaderState* state);
 	int processVideoIntoFrames(VideoReaderState* state);
 	int processAudioIntoFrames(VideoReaderState* state);
 

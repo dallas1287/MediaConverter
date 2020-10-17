@@ -74,6 +74,10 @@ ErrorCode CMediaConverter::openVideoReader(VideoReaderState* state, const char* 
 
             if (avcodec_open2(av_codec_ctx, av_codec, NULL) < 0)
                 return ErrorCode::CODEC_UNOPENED;
+
+            state->start_time = av_format_ctx->streams[vid_str_idx]->start_time;
+            state->duration = av_format_ctx->streams[vid_str_idx]->duration;
+            state->avg_frame_rate = av_format_ctx->streams[vid_str_idx]->avg_frame_rate;
         }
         else if (av_codec_params->codec_type == AVMEDIA_TYPE_AUDIO)
         {
@@ -82,7 +86,7 @@ ErrorCode CMediaConverter::openVideoReader(VideoReaderState* state, const char* 
             if (!state->audio_codec_ctx)
                 return ErrorCode::NO_CODEC_CTX;
 
-            av_codec_ctx->thread_count = 8;
+            state->audio_codec_ctx->thread_count = 8;
 
             if (avcodec_parameters_to_context(state->audio_codec_ctx, av_codec_params) < 0)
                 return ErrorCode::CODEC_CTX_UNINIT;
@@ -94,23 +98,8 @@ ErrorCode CMediaConverter::openVideoReader(VideoReaderState* state, const char* 
                 state->audio_codec_ctx->channel_layout = AV_CH_FRONT_LEFT | AV_CH_FRONT_RIGHT;
 
             state->sample_fmt = state->audio_codec_ctx->sample_fmt;
-            state->sample_rate = state->audio_codec_ctx->sample_rate;
-            state->num_channels = state->audio_codec_ctx->channels;
-            state->frame_size = state->audio_codec_ctx->frame_size;
-
-            state->swr_ctx = swr_alloc_set_opts(nullptr, AV_CH_FRONT_LEFT | AV_CH_FRONT_RIGHT, AV_SAMPLE_FMT_FLT, state->sample_rate, 
-                state->audio_codec_ctx->channel_layout, state->sample_fmt, state->sample_rate, 0, nullptr);
-
-            if (!state->swr_ctx)
-                return ErrorCode::NO_SWR_CTX;
-
-            swr_init(state->swr_ctx);
         }
     }
-
-    state->start_time = av_format_ctx->streams[vid_str_idx]->start_time;
-    state->duration = av_format_ctx->streams[vid_str_idx]->duration;
-    state->avg_frame_rate = av_format_ctx->streams[vid_str_idx]->avg_frame_rate;
 
     av_frame = av_frame_alloc();
     if (!av_frame)
@@ -119,24 +108,6 @@ ErrorCode CMediaConverter::openVideoReader(VideoReaderState* state, const char* 
     av_packet = av_packet_alloc();
     if (!av_packet)
         return ErrorCode::NO_PACKET;
-
-    return ErrorCode::SUCCESS;
-}
-
-ErrorCode CMediaConverter::readAVFrame(FBPtr& fb_ptr, AudioBuffer& audioBuffer)
-{
-    return readAVFrame(&m_vrState, fb_ptr, audioBuffer);
-}
-
-ErrorCode CMediaConverter::readAVFrame(VideoReaderState* state, FBPtr& fb_ptr, AudioBuffer& audioBuffer)
-{
-    int response = processAVIntoFrames(state);
-
-    if (response == AVERROR_EOF)
-    {
-        avcodec_flush_buffers(state->audio_codec_ctx);
-        return ErrorCode::FILE_EOF;
-    }
 
     return ErrorCode::SUCCESS;
 }
@@ -166,7 +137,7 @@ ErrorCode CMediaConverter::readAudioFrame(AudioBuffer& audioBuffer)
 
 ErrorCode CMediaConverter::readAudioFrame(VideoReaderState* state, AudioBuffer& audioBuffer)
 {
-    int response = processAudioIntoFrames(state);
+    int response = processAudioPacketsIntoFrames(state);
 
     if (response == AVERROR_EOF)
     {
@@ -174,7 +145,10 @@ ErrorCode CMediaConverter::readAudioFrame(VideoReaderState* state, AudioBuffer& 
         return ErrorCode::FILE_EOF;
     }
 
-    return (ErrorCode)outputToAudioBuffer(state, audioBuffer);
+    if(response == (int)ErrorCode::SUCCESS)
+        return (ErrorCode)outputToAudioBuffer(state, audioBuffer);
+
+    return (ErrorCode)response;
 }
 
 /*
@@ -209,14 +183,11 @@ int CMediaConverter::processAudioPacketsIntoFrames(VideoReaderState* state)
     int response = readFrame(state);
 
     if (response >= 0)
+    {
         return processAudioIntoFrames(state);
+    }
 
     return response;
-}
-
-int CMediaConverter::processAVIntoFrames(VideoReaderState* state)
-{
-    return 0;
 }
 
 int CMediaConverter::processVideoIntoFrames(VideoReaderState* state)
@@ -266,6 +237,7 @@ int CMediaConverter::processAudioIntoFrames(VideoReaderState* state)
             continue;
 
         response = avcodec_send_packet(state->audio_codec_ctx, state->av_packet);
+
         if (response < 0)
             return (int)ErrorCode::PKT_NOT_DECODED;
 
@@ -278,6 +250,17 @@ int CMediaConverter::processAudioIntoFrames(VideoReaderState* state)
         av_packet_unref(state->av_packet);
         break;
     } while (readFrame(state) >= 0);
+
+    //store the linesize if necessary
+    if (state->line_size < 0 && state->av_frame->linesize[0] > 0)
+        state->line_size = state->av_frame->linesize[0];
+    if (state->num_channels < 0 && state->av_frame->channels > 0)
+        state->num_channels = state->av_frame->channels;
+    if (state->sample_rate < 0 && state->av_frame->sample_rate > 0)
+        state->sample_rate = state->av_frame->sample_rate;
+    if (state->num_samples < state->av_frame->nb_samples)
+        state->num_samples = state->av_frame->nb_samples;
+    state->audio_pts = state->av_frame->pts;
 
     return response;
 }
@@ -309,7 +292,8 @@ int CMediaConverter::outputToBuffer(VideoReaderState* state, FBPtr& fb_ptr)
     auto& width = state->width;
     auto& height = state->height;
     auto& av_frame = state->av_frame;
-
+    if (!av_codec_ctx)
+        return -1;
     //setup scaler
     if (!sws_scaler_ctx)
     {
@@ -345,19 +329,34 @@ int CMediaConverter::outputToAudioBuffer(AudioBuffer& audioBuffer)
 
 int CMediaConverter::outputToAudioBuffer(VideoReaderState* state, AudioBuffer& audioBuffer)
 {
-    state->audio_codec_ctx->frame_size;
     int num_samples = state->av_frame->nb_samples;
     int num_channels = state->av_frame->channels;
     int bytes_per_sample = av_get_bytes_per_sample(state->sample_fmt);
+    auto packed = av_get_packed_sample_fmt(state->sample_fmt);
     int sample_rate = state->av_frame->sample_rate;
     auto linesize = state->av_frame->linesize;
     int ls;
-    int buffer_size = av_samples_get_buffer_size(&ls, num_channels, num_samples, AV_SAMPLE_FMT_FLT, 1);
+    state->buffer_size = av_samples_get_buffer_size(&ls, num_channels, num_samples, packed, 1);
 
-    if(audioBuffer.size() != buffer_size)
-        audioBuffer.resize(buffer_size);
+    if (audioBuffer.size() != state->buffer_size && state->buffer_size > 0)
+        audioBuffer.resize(ls);
+    else
+        return (int)ErrorCode::NO_DATA_AVAIL;
+
     auto ptr = &audioBuffer[0];
-    int got_samples = swr_convert(state->swr_ctx, &ptr, num_samples, (const uint8_t**)state->av_frame->data, state->av_frame->nb_samples);
+    
+    state->swr_ctx = swr_alloc_set_opts(nullptr, AV_CH_FRONT_LEFT | AV_CH_FRONT_RIGHT, AV_SAMPLE_FMT_FLT, sample_rate,
+        state->audio_codec_ctx->channel_layout, state->sample_fmt, sample_rate, 0, nullptr);
+
+    if (!state->swr_ctx)
+        return (int)ErrorCode::NO_SWR_CTX;
+
+    swr_init(state->swr_ctx);
+
+    int got_samples = swr_convert(state->swr_ctx, &ptr, num_samples, (const uint8_t**)state->av_frame->extended_data, state->av_frame->nb_samples);
+
+    if(got_samples < 0)
+        return (int)ErrorCode::NO_SWR_CONVERT;
 
     while (got_samples > 0)
     {
@@ -365,6 +364,8 @@ int CMediaConverter::outputToAudioBuffer(VideoReaderState* state, AudioBuffer& a
         if (got_samples < 0)
             return (int)ErrorCode::NO_SWR_CONVERT;
     }
+
+    av_frame_unref(state->av_frame);
 
     return (int)ErrorCode::SUCCESS;
 }
