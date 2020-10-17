@@ -63,9 +63,6 @@ public:
 		av_packet = other.av_packet;
 		sws_scaler_ctx = other.sws_scaler_ctx;
 		video_stream_index = other.video_stream_index;
-		timebase.num = other.timebase.num;
-		timebase.den = other.timebase.den;
-		frame_ct = other.frame_ct;
 		codecName = other.codecName;
 		frame_number = other.frame_number;
 		frame_pts = other.frame_pts;
@@ -73,10 +70,6 @@ public:
 		pkt_pts = other.pkt_pts;
 		pkt_dts = other.pkt_dts;
 		key_frame = other.key_frame;
-		start_time = other.start_time;
-		duration = other.duration;
-		avg_frame_rate.num = other.avg_frame_rate.num;
-		avg_frame_rate.den = other.avg_frame_rate.den;
 		pkt_size = other.pkt_size;
 		audio_codec_ctx = other.audio_codec_ctx;
 		audio_stream_index = other.audio_stream_index;
@@ -98,9 +91,6 @@ public:
 			av_packet == other.av_packet &&
 			sws_scaler_ctx == other.sws_scaler_ctx &&
 			video_stream_index == other.video_stream_index &&
-			timebase.num == other.timebase.num &&
-			timebase.den == other.timebase.den &&
-			frame_ct == other.frame_ct &&
 			codecName == other.codecName &&
 			frame_number == other.frame_number &&
 			frame_pts == other.frame_pts &&
@@ -108,10 +98,6 @@ public:
 			pkt_pts == other.pkt_pts &&
 			pkt_dts == other.pkt_dts &&
 			key_frame == other.key_frame &&
-			start_time == other.start_time &&
-			duration == other.duration &&
-			avg_frame_rate.num == other.avg_frame_rate.num &&
-			avg_frame_rate.den == other.avg_frame_rate.den &&
 			pkt_size == other.pkt_size &&
 			audio_codec_ctx == other.audio_codec_ctx &&
 			audio_stream_index == other.audio_stream_index &&
@@ -124,22 +110,21 @@ public:
 
 	int FPS() const
 	{
-		if (avg_frame_rate.num == 0 || avg_frame_rate.den == 0)
+		if(!IsRationalValid(VideoAvgFrameRate()))
 			return 1;
 
 		//using round here because i have seen avg_frame_rates report strange values that end up @ 30.03 fps
-		return (int)std::round(avg_frame_rate.num / (double)avg_frame_rate.den);
+		return (int)std::round(VideoAvgFrameRateDbl());
 	}
 
 	int64_t FrameInterval() const
 	{
-		if (timebase.num <= 0 || timebase.den <= 0 ||
-			avg_frame_rate.num <= 0 || avg_frame_rate.den <= 0)
+		if(!IsRationalValid(VideoTimebase()))
 			return 1;
-		auto ret = (timebase.den / (double)timebase.num) / (double)(avg_frame_rate.num / (double)avg_frame_rate.den);
+		auto ret = VideoTimebase().den / (double)VideoTimebase().num / VideoAvgFrameRateDbl();
 		if (ret == 0)
 			return 1;
-		return (int)ret;
+		return (int64_t)ret;
 	}
 
 	AVCodecContext* GetCodecCtxFromPkt()
@@ -157,16 +142,103 @@ public:
 		return nullptr;
 	}
 
-	double Timebase() { return av_q2d(timebase); }
-	double FrameRate() { return av_q2d(avg_frame_rate); }
-	bool HasVideoStream() { return video_stream_index >= 0; }
-	bool HasAudioStream() { return audio_stream_index >= 0; }
+	bool HasVideoStream() const { return video_stream_index >= 0; }
+	bool HasAudioStream() const { return audio_stream_index >= 0; }
 	int SampleRate() { return sample_rate; }
 	int BufferSize() { return buffer_size; }
 	int Channels() { return num_channels; }
 	int NumSamples() { return num_samples; }
 	int LineSize() { return line_size; }
 	int BytesPerSample() { return av_get_bytes_per_sample(sample_fmt); }
+	int64_t VideoDuration() const
+	{ 
+		if (!HasVideoStream())
+			return 0;
+		return av_format_ctx->streams[video_stream_index]->duration;
+	}
+	int64_t VideoStartTime()
+	{
+		if (!HasVideoStream())
+			return 0;
+		return av_format_ctx->streams[video_stream_index]->start_time;
+	}
+	AVRational VideoAvgFrameRate() const
+	{
+		if (!HasVideoStream())
+			return av_make_q(-1, -1); //returns invalid values 
+
+		return av_format_ctx->streams[video_stream_index]->avg_frame_rate;
+	}
+	double VideoAvgFrameRateDbl() const
+	{
+		if (!HasVideoStream())
+			return 0.0;
+		return av_q2d(VideoAvgFrameRate());
+	}
+	AVRational VideoTimebase() const
+	{
+		if (!HasVideoStream())
+			return av_make_q(-1, -1); //returns invalid values 
+
+		return av_format_ctx->streams[video_stream_index]->time_base;
+	}
+	double VideoTimebaseDbl()
+	{
+		if (!HasVideoStream())
+			return 0.0;
+		return av_q2d(VideoTimebase());
+	}
+	int64_t VideoFrameCt() const
+	{
+		if (!HasVideoStream())
+			return 0;
+		return av_format_ctx->streams[video_stream_index]->nb_frames;
+	}
+
+	int64_t AudioDuration()
+	{
+		if (!HasAudioStream())
+			return 0;
+		return av_format_ctx->streams[audio_stream_index]->duration;
+	}
+	int64_t AudioStartTime()
+	{
+		if (!HasAudioStream())
+			return 0;
+		return av_format_ctx->streams[audio_stream_index]->start_time;
+	}
+	AVRational AudioAvgFrameRate()
+	{
+		if (!HasAudioStream())
+			return av_make_q(-1, -1); //returns invalid values 
+
+		return av_format_ctx->streams[audio_stream_index]->avg_frame_rate;
+	}
+	double AudioAvgFrameRateDbl()
+	{
+		if (!HasAudioStream())
+			return 0.0;
+		return av_q2d(AudioAvgFrameRate());
+	}
+	AVRational AudioTimebase()
+	{
+		if (!HasAudioStream())
+			return av_make_q(-1, -1); //returns invalid values 
+		return av_format_ctx->streams[audio_stream_index]->time_base;
+	}
+	double AudioTimebaseDbl()
+	{
+		if (!HasAudioStream())
+			return 0.0;
+		return av_q2d(AudioTimebase());
+	}
+
+	bool IsRationalValid(const AVRational& rational) const
+	{
+		//num can be 0 but den can't 
+		//generally if one reports -1 then they both will 
+		return (rational.den > 0 && rational.num >= 0);
+	}
 
 	int width = 0;
 	int height = 0;
@@ -178,8 +250,6 @@ public:
 	AVPacket* av_packet = nullptr;
 	SwsContext* sws_scaler_ctx = nullptr;
 	int video_stream_index = -1;
-	AVRational timebase = { -1, -1 };
-	int64_t frame_ct = 0;
 
 	const char* codecName = nullptr;
 	int frame_number = -1;
@@ -188,9 +258,6 @@ public:
 	int64_t pkt_dts = -1;
 	int64_t frame_pkt_dts = -1; //frame copies pkt_dts when it grabs frame data
 	int key_frame = -1;
-	int64_t start_time = -1;
-	int64_t duration = -1;
-	AVRational avg_frame_rate = { -1, -1 };
 	size_t pkt_size = -1;
 
 	//Audio details

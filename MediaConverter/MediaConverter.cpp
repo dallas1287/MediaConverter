@@ -22,10 +22,7 @@ ErrorCode CMediaConverter::openVideoReader(VideoReaderState* state, const char* 
     auto& av_codec_ctx = state->video_codec_ctx;
     auto& av_frame = state->av_frame;
     auto& av_packet = state->av_packet;
-    auto& vid_str_idx = state->video_stream_index;
     auto& sws_scaler_ctx = state->sws_scaler_ctx;
-    auto& timebase = state->timebase;
-    auto& frame_ct = state->frame_ct;
 
     av_format_ctx = avformat_alloc_context();
     if (!av_format_ctx)
@@ -39,7 +36,7 @@ ErrorCode CMediaConverter::openVideoReader(VideoReaderState* state, const char* 
 
     state->av_format_ctx->seek2any = 1;
 
-    vid_str_idx = -1;
+    state->video_stream_index = -1;
     state->audio_stream_index = -1;
     AVCodec* av_codec = nullptr;
     AVCodecParameters* av_codec_params = nullptr;
@@ -55,11 +52,9 @@ ErrorCode CMediaConverter::openVideoReader(VideoReaderState* state, const char* 
 
         if (av_codec_params->codec_type == AVMEDIA_TYPE_VIDEO)
         {
-            vid_str_idx = i;
+            state->video_stream_index = i;
             width = av_codec_params->width;
             height = av_codec_params->height;
-            timebase = av_format_ctx->streams[i]->time_base;
-            frame_ct = av_format_ctx->streams[i]->nb_frames;
 
             state->codecName = av_codec->long_name;
 
@@ -74,10 +69,6 @@ ErrorCode CMediaConverter::openVideoReader(VideoReaderState* state, const char* 
 
             if (avcodec_open2(av_codec_ctx, av_codec, NULL) < 0)
                 return ErrorCode::CODEC_UNOPENED;
-
-            state->start_time = av_format_ctx->streams[vid_str_idx]->start_time;
-            state->duration = av_format_ctx->streams[vid_str_idx]->duration;
-            state->avg_frame_rate = av_format_ctx->streams[vid_str_idx]->avg_frame_rate;
         }
         else if (av_codec_params->codec_type == AVMEDIA_TYPE_AUDIO)
         {
