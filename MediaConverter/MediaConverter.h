@@ -22,7 +22,7 @@ extern "C"
 #include <libswresample/swresample.h>
 }
 
-enum class ErrorCode : int
+enum class MEDIACONVERTER_API ErrorCode : int
 {
 	AGAIN = -2,
 	FILE_EOF = -1,
@@ -158,6 +158,7 @@ private:
 				num_samples = frame->nb_samples;
 			
 			audio_pts = frame->pts;
+			best_effort_ts = frame->best_effort_timestamp;
 			return true;
 		}
 
@@ -173,6 +174,7 @@ private:
 		int LineSize() { return line_size; }
 		int NumSamples() { return num_samples; }
 		int64_t AudioPts() { return audio_pts; }
+		int64_t BestEffortTs() { return best_effort_ts; }
 
 	private:
 		int num_channels = -1;
@@ -180,6 +182,7 @@ private:
 		int line_size = -1;
 		int num_samples = -1;
 		int64_t audio_pts = -1;
+		int64_t best_effort_ts = -1;
 	};
 
 public:
@@ -253,6 +256,7 @@ public:
 	int LineSize() { return audioFrameData.LineSize(); }
 	int BytesPerSample() { return av_get_bytes_per_sample(AudioSampleFormat()); }
 	int64_t AudioPts() { return audioFrameData.AudioPts(); }
+	int64_t BestEffortTs() { return audioFrameData.BestEffortTs(); }
 
 	//VideoFrameData accessors - these change per frame 
 	int VideoFrameNumber() { return videoFrameData.FrameNumber(); }
