@@ -464,7 +464,7 @@ public:
 	int audio_stream_index = -1;
 
 	AudioFrameData audioFrameData;
-	int64_t audio_frame_interval; //this is calculated manually from the buffer since it isn't known prior through ffmpeg
+	int64_t audio_frame_interval = 0; //this is calculated manually from the buffer since it isn't known prior through ffmpeg
 };
 
 // This class is exported from the dll
