@@ -129,16 +129,17 @@ private:
 			line_size = other.line_size;
 			num_samples = other.num_samples;
 			audio_pts = other.audio_pts;
-
+			bit_rate = other.bit_rate;
 			return *this;
 		}
 		bool operator==(const AudioFrameData& other)
 		{
 			return num_channels == other.num_channels &&
-			sample_rate == other.sample_rate &&
-			line_size == other.line_size &&
-			num_samples == other.num_samples &&
-			audio_pts == other.audio_pts;
+				sample_rate == other.sample_rate &&
+				line_size == other.line_size &&
+				num_samples == other.num_samples &&
+				audio_pts == other.audio_pts &&
+				bit_rate == other.bit_rate;
 		}
 
 		//the data provided by the frame isn't necessarily the same for each frame
@@ -158,7 +159,19 @@ private:
 				num_samples = frame->nb_samples;
 			
 			audio_pts = frame->pts;
+			audio_dts = frame->pkt_dts;
 			best_effort_ts = frame->best_effort_timestamp;
+			return true;
+		}
+
+		bool UpdateBitRate(AVCodecContext* ctx)
+		{
+			if (!ctx)
+				return false;
+
+			if (bit_rate < 0 || ctx->bit_rate > 0)
+				bit_rate = ctx->bit_rate;
+
 			return true;
 		}
 
@@ -174,7 +187,9 @@ private:
 		int LineSize() { return line_size; }
 		int NumSamples() { return num_samples; }
 		int64_t AudioPts() { return audio_pts; }
+		int64_t AudioDts() { return audio_dts; }
 		int64_t BestEffortTs() { return best_effort_ts; }
+		int64_t BitRate() { return bit_rate; }
 
 	private:
 		int num_channels = -1;
@@ -182,7 +197,9 @@ private:
 		int line_size = -1;
 		int num_samples = -1;
 		int64_t audio_pts = -1;
+		int64_t audio_dts = -1;
 		int64_t best_effort_ts = -1;
+		int64_t bit_rate = -1;
 	};
 
 public:
@@ -214,19 +231,29 @@ public:
 	int FPS() const
 	{
 		if(!IsRationalValid(VideoAvgFrameRate()))
-			return 1;
+			return 0;
 
 		//using round here because i have seen avg_frame_rates report strange values that end up @ 30.03 fps
 		return (int)std::round(VideoAvgFrameRateDbl());
 	}
 
-	int64_t FrameInterval() const
+	int64_t VideoFrameInterval() const
 	{
 		if(!IsRationalValid(VideoTimebase()))
 			return 1;
 		auto ret = VideoTimebase().den / (double)VideoTimebase().num / VideoAvgFrameRateDbl();
 		if (ret == 0)
 			return 1;
+		return (int64_t)ret;
+	}
+
+	int64_t AudioFrameInterval() const
+	{
+		if (!IsRationalValid(AudioTimebase()) || !IsRationalValid(AudioAvgFrameRate()))
+			return audio_frame_interval;
+		auto ret = AudioTimebase().den / (double)AudioTimebase().num / AudioAvgFrameRateDbl();
+		if (ret == 0)
+			return audio_frame_interval;
 		return (int64_t)ret;
 	}
 
@@ -256,7 +283,14 @@ public:
 	int LineSize() { return audioFrameData.LineSize(); }
 	int BytesPerSample() { return av_get_bytes_per_sample(AudioSampleFormat()); }
 	int64_t AudioPts() { return audioFrameData.AudioPts(); }
+	int64_t AudioDts() { return audioFrameData.AudioDts(); }
 	int64_t BestEffortTs() { return audioFrameData.BestEffortTs(); }
+	int64_t BitRate() { return audioFrameData.BitRate(); }
+	double AudioTotalSeconds() const
+	{
+		return AudioDuration() / (double)AudioFrameInterval();
+	}
+
 
 	//VideoFrameData accessors - these change per frame 
 	int VideoFrameNumber() { return videoFrameData.FrameNumber(); }
@@ -266,6 +300,10 @@ public:
 	int64_t FramePktDts() { return videoFrameData.FramePktDts(); }
 	int KeyFrame() { return videoFrameData.KeyFrame(); }
 	size_t VideoPktSize() { return videoFrameData.PktSize(); }
+	double VideoTotalSeconds() const
+	{
+		return VideoDuration() / (double)VideoFrameInterval();
+	}
 
 	//File data accessors - these are constant and read when the file is opened
 	int64_t VideoDuration() const
@@ -274,7 +312,7 @@ public:
 			return 0;
 		return av_format_ctx->streams[video_stream_index]->duration;
 	}
-	int64_t VideoStartTime()
+	int64_t VideoStartTime() const
 	{
 		if (!HasVideoStream())
 			return 0;
@@ -300,7 +338,7 @@ public:
 
 		return av_format_ctx->streams[video_stream_index]->time_base;
 	}
-	double VideoTimebaseDbl()
+	double VideoTimebaseDbl() const
 	{
 		if (!HasVideoStream())
 			return 0.0;
@@ -325,44 +363,46 @@ public:
 		return av_format_ctx->streams[video_stream_index]->codecpar->height;
 	}
 
-	int64_t AudioDuration()
+	int64_t AudioDuration() const
 	{
 		if (!HasAudioStream())
 			return 0;
 		return av_format_ctx->streams[audio_stream_index]->duration;
 	}
-	int64_t AudioStartTime()
+	int64_t AudioStartTime() const
 	{
 		if (!HasAudioStream())
 			return 0;
 		return av_format_ctx->streams[audio_stream_index]->start_time;
 	}
-	AVRational AudioAvgFrameRate()
+	AVRational AudioAvgFrameRate() const
 	{
 		if (!HasAudioStream())
 			return av_make_q(-1, -1); //returns invalid values 
 
 		return av_format_ctx->streams[audio_stream_index]->avg_frame_rate;
 	}
-	double AudioAvgFrameRateDbl()
+	double AudioAvgFrameRateDbl() const
 	{
 		if (!HasAudioStream())
 			return 0.0;
+		if (!IsRationalValid(AudioAvgFrameRate()))
+			return 0.0;
 		return av_q2d(AudioAvgFrameRate());
 	}
-	AVRational AudioTimebase()
+	AVRational AudioTimebase() const
 	{
 		if (!HasAudioStream())
 			return av_make_q(-1, -1); //returns invalid values 
 		return av_format_ctx->streams[audio_stream_index]->time_base;
 	}
-	double AudioTimebaseDbl()
+	double AudioTimebaseDbl() const 
 	{
 		if (!HasAudioStream())
 			return 0.0;
 		return av_q2d(AudioTimebase());
 	}
-	int AudioFrameSize()
+	int AudioFrameSize() const
 	{
 		if (!HasAudioStream() || !audio_codec_ctx)
 			return 0;
@@ -394,6 +434,13 @@ public:
 		return audio_codec_ctx->sample_fmt;
 	}
 
+	void SetAudioFrameInterval(int64_t interval)
+	{
+		if (interval < 0)
+			return;
+		audio_frame_interval = interval;
+	}
+
 	bool IsRationalValid(const AVRational& rational) const
 	{
 		//num can be 0 but den can't 
@@ -417,6 +464,7 @@ public:
 	int audio_stream_index = -1;
 
 	AudioFrameData audioFrameData;
+	int64_t audio_frame_interval; //this is calculated manually from the buffer since it isn't known prior through ffmpeg
 };
 
 // This class is exported from the dll
@@ -459,11 +507,20 @@ public:
 	ErrorCode trackToFrame(MediaReaderState* state, int64_t targetPts);
 	ErrorCode trackToFrame(int64_t targetPts);
 
-	ErrorCode seekToFrame(MediaReaderState* state, int64_t targetPts, bool inReverse = false);
-	ErrorCode seekToFrame(int64_t targetPts, bool inReverse = false);
+	ErrorCode trackToAudioFrame(MediaReaderState* state, int64_t targetPts);
+	ErrorCode trackToAudioFrame(int64_t targetPts);
+
+	ErrorCode seekToFrame(MediaReaderState* state, int64_t targetPts);
+	ErrorCode seekToFrame(int64_t targetPts);
+
+	ErrorCode seekToAudioFrame(MediaReaderState* state, int64_t targetPts);
+	ErrorCode seekToAudioFrame(int64_t targetPts);
 
 	ErrorCode seekToStart(MediaReaderState* state);
 	ErrorCode seekToStart();
+
+	ErrorCode seekToAudioStart(MediaReaderState* state);
+	ErrorCode seekToAudioStart();
 
 	ErrorCode closeVideoReader(MediaReaderState* state);
 	ErrorCode closeVideoReader();

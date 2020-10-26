@@ -147,7 +147,6 @@ int CMediaConverter::processVideoPacketsIntoFrames()
 int CMediaConverter::processVideoPacketsIntoFrames(MediaReaderState* state)
 {
     //inital frame read, gives it an initial state to branch from
-    //int response = av_read_frame(state->av_format_ctx, state->av_packet);
     int response = readFrame(state);
 
     if (response >= 0)
@@ -231,8 +230,9 @@ int CMediaConverter::processAudioIntoFrames(MediaReaderState* state)
         break;
     } while (readFrame(state) >= 0);
 
-    //store the linesize if necessary
+    //update frame data as necessary
     state->audioFrameData.FillDataFromFrame(state->av_frame);
+    state->audioFrameData.UpdateBitRate(state->audio_codec_ctx);
 
     return response;
 }
@@ -339,13 +339,13 @@ ErrorCode CMediaConverter::trackToFrame(int64_t targetPts)
 
 ErrorCode CMediaConverter::trackToFrame(MediaReaderState* state, int64_t targetPts)
 {
-    seekToFrame(state, targetPts, true);
+    seekToFrame(state, targetPts);
     auto ret = processVideoPacketsIntoFrames(state);
     if (ret != (int)ErrorCode::SUCCESS)
         return (ErrorCode)ret;
-    int64_t interval = state->FrameInterval() * state->FPS(); // interval starts at 1 second previous
+    int64_t interval = state->VideoFrameInterval() * state->FPS(); // interval starts at 1 second previous
     int64_t previous = state->VideoFramePts();
-    while (!WithinTolerance(targetPts, state->VideoFramePts(), state->FrameInterval() - 10))
+    while (!WithinTolerance(targetPts, state->VideoFramePts(), state->VideoFrameInterval() - 10))
     {
         if (state->VideoFramePts() < targetPts)
         {
@@ -353,11 +353,11 @@ ErrorCode CMediaConverter::trackToFrame(MediaReaderState* state, int64_t targetP
         }
         else
         {
-            interval *= 2; //double interval each time through to speed up seek
-            seekToFrame(state, state->VideoFramePts() - interval, true);
+            seekToFrame(state, state->VideoFramePts() - interval);
             auto ret = processVideoPacketsIntoFrames(state);
             if (ret != (int)ErrorCode::SUCCESS)
                 return (ErrorCode)ret;
+            interval *= 2;
         }
 
         if (previous == state->VideoFramePts())
@@ -368,16 +368,71 @@ ErrorCode CMediaConverter::trackToFrame(MediaReaderState* state, int64_t targetP
     return ErrorCode::SUCCESS;
 }
 
-ErrorCode CMediaConverter::seekToFrame(int64_t targetPts, bool inReverse)
+ErrorCode CMediaConverter::trackToAudioFrame(int64_t targetPts)
 {
-    return seekToFrame(&m_mrState, targetPts, inReverse);
+    return trackToAudioFrame(&m_mrState, targetPts);
 }
 
-ErrorCode CMediaConverter::seekToFrame(MediaReaderState* state, int64_t targetPts, bool inReverse)
+ErrorCode CMediaConverter::trackToAudioFrame(MediaReaderState* state, int64_t targetPts)
 {
-    if (av_seek_frame(state->av_format_ctx, state->video_stream_index, targetPts, inReverse ? AVSEEK_FLAG_BACKWARD : AVSEEK_FLAG_ANY) >= 0)
+    if (!state->audio_codec_ctx)
+        return ErrorCode::NO_CODEC_CTX;
+    if (state->audio_stream_index < 0)
+        return ErrorCode::NO_STREAMS;
+
+    seekToAudioFrame(state, targetPts);
+    auto ret = processAudioPacketsIntoFrames(state);
+    if (ret != (int)ErrorCode::SUCCESS)
+        return (ErrorCode)ret;
+    int64_t interval = state->AudioFrameInterval() * state->FPS(); // interval starts at 1 second previous
+    int64_t previous = state->AudioPts();
+    while (!WithinTolerance(targetPts, state->AudioPts(), state->AudioFrameInterval() - 10))
+    {
+        if (state->AudioPts() < targetPts)
+        {
+            processAudioPacketsIntoFrames(state);
+        }
+        else
+        {
+            seekToAudioFrame(state, state->AudioPts() - interval);
+            auto ret = processAudioPacketsIntoFrames(state);
+            if (ret != (int)ErrorCode::SUCCESS)
+                return (ErrorCode)ret;
+        }
+
+        if (previous == state->AudioPts())
+            return ErrorCode::SUCCESS;
+        previous = state->AudioPts();
+    }
+
+    return ErrorCode::SUCCESS;
+}
+
+ErrorCode CMediaConverter::seekToFrame(int64_t targetPts)
+{
+    return seekToFrame(&m_mrState, targetPts);
+}
+
+ErrorCode CMediaConverter::seekToFrame(MediaReaderState* state, int64_t targetPts)
+{
+    if (av_seek_frame(state->av_format_ctx, state->video_stream_index, targetPts, AVSEEK_FLAG_BACKWARD) >= 0)
     {
         avcodec_flush_buffers(state->video_codec_ctx);
+        return ErrorCode::SUCCESS;
+    }
+    return ErrorCode::SEEK_FAILED;
+}
+
+ErrorCode CMediaConverter::seekToAudioFrame(int64_t targetPts)
+{
+    return seekToAudioFrame(&m_mrState, targetPts);
+}
+
+ErrorCode CMediaConverter::seekToAudioFrame(MediaReaderState* state, int64_t targetPts)
+{
+    if (av_seek_frame(state->av_format_ctx, state->audio_stream_index, targetPts, AVSEEK_FLAG_BACKWARD) >= 0)
+    {
+        avcodec_flush_buffers(state->audio_codec_ctx);
         return ErrorCode::SUCCESS;
     }
     return ErrorCode::SEEK_FAILED;
@@ -393,6 +448,21 @@ ErrorCode CMediaConverter::seekToStart(MediaReaderState* state)
     if (av_seek_frame(state->av_format_ctx, state->video_stream_index, 0, 0) >= 0)
     {
         avcodec_flush_buffers(state->video_codec_ctx);
+        return ErrorCode::SUCCESS;
+    }
+    return ErrorCode::SEEK_FAILED;
+}
+
+ErrorCode CMediaConverter::seekToAudioStart()
+{
+    return seekToAudioStart(&m_mrState);
+}
+
+ErrorCode CMediaConverter::seekToAudioStart(MediaReaderState* state)
+{
+    if (av_seek_frame(state->av_format_ctx, state->audio_stream_index, 0, 0) >= 0)
+    {
+        avcodec_flush_buffers(state->audio_codec_ctx);
         return ErrorCode::SUCCESS;
     }
     return ErrorCode::SEEK_FAILED;
