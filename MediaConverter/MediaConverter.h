@@ -175,21 +175,21 @@ private:
 			return true;
 		}
 
-		int BufferSize(AVSampleFormat fmt)
+		int BufferSize(AVSampleFormat fmt) const
 		{
 			auto packed = av_get_packed_sample_fmt(fmt);
 			int linesize = 0;
 			return av_samples_get_buffer_size(&linesize, num_channels, num_samples, packed, 1);
 		}
 
-		int Channels() { return num_channels; }
-		int SampleRate() { return sample_rate; }
-		int LineSize() { return line_size; }
-		int NumSamples() { return num_samples; }
-		int64_t AudioPts() { return audio_pts; }
-		int64_t AudioDts() { return audio_dts; }
-		int64_t BestEffortTs() { return best_effort_ts; }
-		int64_t BitRate() { return bit_rate; }
+		int Channels() const { return num_channels; }
+		int SampleRate() const { return sample_rate; }
+		int LineSize() const { return line_size; }
+		int NumSamples() const { return num_samples; }
+		int64_t AudioPts() const { return audio_pts; }
+		int64_t AudioDts() const { return audio_dts; }
+		int64_t BestEffortTs() const { return best_effort_ts; }
+		int64_t BitRate() const { return bit_rate; }
 
 	private:
 		int num_channels = -1;
@@ -276,16 +276,16 @@ public:
 	bool HasAudioStream() const { return audio_stream_index >= 0; }
 
 	//AudioFrameData accessors - these change per frame
-	int SampleRate() { return audioFrameData.SampleRate(); }
-	int AudioBufferSize() { return audioFrameData.BufferSize(AudioSampleFormat()); }
-	int Channels() { return audioFrameData.Channels(); }
-	int NumSamples() { return audioFrameData.NumSamples(); }
-	int LineSize() { return audioFrameData.LineSize(); }
-	int BytesPerSample() { return av_get_bytes_per_sample(AudioSampleFormat()); }
-	int64_t AudioPts() { return audioFrameData.AudioPts(); }
-	int64_t AudioDts() { return audioFrameData.AudioDts(); }
-	int64_t BestEffortTs() { return audioFrameData.BestEffortTs(); }
-	int64_t BitRate() { return audioFrameData.BitRate(); }
+	int SampleRate() const { return audioFrameData.SampleRate(); }
+	int AudioBufferSize() const { return audioFrameData.BufferSize(AudioSampleFormat()); }
+	int Channels() const { return audioFrameData.Channels(); }
+	int NumSamples() const { return audioFrameData.NumSamples(); }
+	int LineSize() const { return audioFrameData.LineSize(); }
+	int BytesPerSample() const { return av_get_bytes_per_sample(AudioSampleFormat()); }
+	int64_t AudioPts() const { return audioFrameData.AudioPts(); }
+	int64_t AudioDts() const { return audioFrameData.AudioDts(); }
+	int64_t BestEffortTs() const { return audioFrameData.BestEffortTs(); }
+	int64_t BitRate() const { return audioFrameData.BitRate(); }
 	double AudioTotalSeconds() const
 	{
 		return AudioDuration() / (double)AudioFrameInterval();
@@ -426,7 +426,7 @@ public:
 		return av_codec->long_name;
 	}
 
-	AVSampleFormat AudioSampleFormat()
+	AVSampleFormat AudioSampleFormat() const
 	{
 		if (!HasAudioStream() || !audio_codec_ctx)
 			return AV_SAMPLE_FMT_NONE;
@@ -470,7 +470,7 @@ public:
 // This class is exported from the dll
 class MEDIACONVERTER_API CMediaConverter 
 {
-	typedef std::unique_ptr<unsigned char[]> FBPtr;
+	typedef std::unique_ptr<uint8_t[]> FBPtr;
 	typedef std::vector<uint8_t> AudioBuffer;
 
 public:
