@@ -9,6 +9,10 @@ CMediaConverter::CMediaConverter()
 {
 }
 
+CMediaConverter::~CMediaConverter()
+{
+}
+
 ErrorCode CMediaConverter::openVideoReader(const char* filename)
 {
     return openVideoReader(&m_mrState, filename);
@@ -535,6 +539,108 @@ ErrorCode CMediaConverter::readVideoReaderFrame(MediaReaderState* state, unsigne
 
     *frameBuffer = output;
 
+    return ErrorCode::SUCCESS;
+}
+
+ErrorCode CMediaConverter::encodeMedia(const char* inFile, const char* outFile)
+{
+    return encodeMedia(inFile, outFile, &m_mrState);
+}
+
+ErrorCode CMediaConverter::encodeMedia(const char* inFile, const char* outFile, MediaReaderState* state)
+{
+    if (avformat_open_input(&state->av_format_ctx, inFile, nullptr, nullptr) < 0)
+        return ErrorCode::FMT_UNOPENED;
+
+    if (avformat_find_stream_info(state->av_format_ctx, nullptr) < 0)
+        return ErrorCode::NO_STREAMS;
+
+    AVFormatContext* out_ctx = nullptr;
+    avformat_alloc_output_context2(&out_ctx, nullptr, nullptr, outFile);
+    if (!out_ctx)
+        return ErrorCode::NO_CODEC_CTX;
+
+    int num_streams = state->av_format_ctx->nb_streams;
+    if (num_streams <= 0)
+        return ErrorCode::NO_STREAMS;
+
+    int* streams_list = nullptr;
+    streams_list = (int*)av_mallocz_array(num_streams, sizeof(*streams_list));
+    if (!streams_list)
+        return ErrorCode::NO_STREAMS;
+
+    int stream_index = 0;
+    for (unsigned int i = 0; i < state->av_format_ctx->nb_streams; ++i)
+    {
+        AVStream* out_stream = nullptr;
+        AVStream* in_stream = state->av_format_ctx->streams[i];
+        AVCodecParameters* in_codecpar = in_stream->codecpar;
+
+        if (in_codecpar->codec_type != AVMEDIA_TYPE_AUDIO &&
+            in_codecpar->codec_type != AVMEDIA_TYPE_VIDEO)
+        {
+            streams_list[i] = -1;
+            continue;
+        }
+
+        streams_list[i] = stream_index++;
+        out_stream = avformat_new_stream(out_ctx, nullptr);
+        if (!out_stream)
+            return ErrorCode::NO_CODEC_CTX;
+
+        if (avcodec_parameters_copy(out_stream->codecpar, in_codecpar) < 0)
+            return ErrorCode::NO_CODEC_CTX;
+    }
+
+    av_dump_format(out_ctx, 0, outFile, 1);
+
+    if (!(out_ctx->oformat->flags & AVFMT_NOFILE))
+    {
+        if (avio_open(&out_ctx->pb, outFile, AVIO_FLAG_WRITE) < 0)
+            return ErrorCode::NO_OUTPUT_FILE;
+    }
+
+    AVDictionary* opts = nullptr;
+    //av_dict_set(&opts, "movflags", "frag_keyframe+empty_moov+default_base_moof", 0);
+
+    if (avformat_write_header(out_ctx, &opts) < 0)
+        return ErrorCode::NO_OUTPUT_FILE;
+
+    AVPacket pkt;
+    while (1) //this will end up linking up with the start and stop frames of the files
+    {
+        AVStream* in_stream = nullptr;
+        AVStream* out_stream = nullptr;
+        if (av_read_frame(state->av_format_ctx, &pkt) < 0)
+            break;
+
+        in_stream = state->av_format_ctx->streams[pkt.stream_index];
+        if (pkt.stream_index > num_streams || streams_list[pkt.stream_index] < 0)
+        {
+            av_packet_unref(&pkt);
+            continue;
+        }
+
+        pkt.stream_index = streams_list[pkt.stream_index];
+        out_stream = out_ctx->streams[pkt.stream_index];
+        pkt.pts = av_rescale_q_rnd(pkt.pts, in_stream->time_base, out_stream->time_base, AVRounding(AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX));
+        pkt.dts = av_rescale_q_rnd(pkt.dts, in_stream->time_base, out_stream->time_base, AVRounding(AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX));
+        pkt.duration = av_rescale_q(pkt.duration, in_stream->time_base, out_stream->time_base);
+        pkt.pos = -1;
+
+        av_interleaved_write_frame(out_ctx, &pkt);
+
+        av_packet_unref(&pkt);  
+    }
+
+    av_write_trailer(out_ctx);
+
+    avformat_close_input(&state->av_format_ctx);
+    if (out_ctx && !(out_ctx->oformat->flags & AVFMT_NOFILE))
+        avio_closep(&out_ctx->pb);
+
+    avformat_free_context(out_ctx);
+    av_freep(&streams_list);
     return ErrorCode::SUCCESS;
 }
 

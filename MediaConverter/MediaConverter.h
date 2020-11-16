@@ -20,6 +20,7 @@ extern "C"
 #include <libavformat/avformat.h>
 #include <libswscale/swscale.h>
 #include <libswresample/swresample.h>
+#include <libavutil/timestamp.h>
 }
 
 enum class MEDIACONVERTER_API ErrorCode : int
@@ -46,7 +47,8 @@ enum class MEDIACONVERTER_API ErrorCode : int
 	SEEK_FAILED,
 	NO_DATA_AVAIL,
 	REPEATING_FRAME,
-	NO_AUDIO_DEVICES
+	NO_AUDIO_DEVICES,
+	NO_OUTPUT_FILE
 };
 
 class MEDIACONVERTER_API MediaReaderState
@@ -475,6 +477,7 @@ class MEDIACONVERTER_API CMediaConverter
 
 public:
 	CMediaConverter(void);
+	~CMediaConverter();
 	ErrorCode loadFrame(const char* filename, int& width, int& height, unsigned char** data);
 
 	ErrorCode openVideoReader(const char* filename);
@@ -524,6 +527,9 @@ public:
 
 	ErrorCode closeVideoReader(MediaReaderState* state);
 	ErrorCode closeVideoReader();
+
+	ErrorCode encodeMedia(const char* inFile, const char* outFile);
+	ErrorCode encodeMedia(const char* inFile, const char* outFile, MediaReaderState* state);
 
 	ErrorCode readVideoReaderFrame(MediaReaderState* state, unsigned char** frameBuffer, bool requestFlush = false); //unmanaged data version, creates heap data in function
 	ErrorCode readVideoReaderFrame(unsigned char** frameBuffer, bool requestFlush = false); //unmanaged data version, creates heap data in function
