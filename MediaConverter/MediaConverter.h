@@ -450,6 +450,11 @@ public:
 		return (rational.den > 0 && rational.num >= 0);
 	}
 
+	bool IsOpened() const { return is_opened; }
+	void SetIsOpened(bool opened = true) { is_opened = opened; }
+
+	bool is_opened = false;
+
 	AVFrame* av_frame = nullptr;
 	AVPacket* av_packet = nullptr;
 
@@ -534,6 +539,7 @@ public:
 	ErrorCode readVideoReaderFrame(MediaReaderState* state, unsigned char** frameBuffer, bool requestFlush = false); //unmanaged data version, creates heap data in function
 	ErrorCode readVideoReaderFrame(unsigned char** frameBuffer, bool requestFlush = false); //unmanaged data version, creates heap data in function
 
+	const MediaReaderState& MRState() const { return m_mrState; }
 	MediaReaderState& MRState() { return m_mrState; }
 private:
 	bool WithinTolerance(int64_t referencePts, int64_t targetPts, int64_t tolerance);

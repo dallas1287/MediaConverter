@@ -96,6 +96,7 @@ ErrorCode CMediaConverter::openVideoReader(MediaReaderState* state, const char* 
     if (!av_packet)
         return ErrorCode::NO_PACKET;
 
+    state->SetIsOpened();
     return ErrorCode::SUCCESS;
 }
 
@@ -487,6 +488,7 @@ ErrorCode CMediaConverter::closeVideoReader(MediaReaderState* state)
     avcodec_free_context(&state->audio_codec_ctx);
     av_frame_free(&state->av_frame);
     av_packet_free(&state->av_packet);
+    state->SetIsOpened(false);
     return ErrorCode::SUCCESS;
 }
 
