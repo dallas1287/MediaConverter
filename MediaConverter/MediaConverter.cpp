@@ -249,6 +249,8 @@ int CMediaConverter::readFrame()
 
 int CMediaConverter::readFrame(MediaReaderState* state)
 {
+    if (!state->av_format_ctx)
+        return (int)ErrorCode::NO_FMT_CTX;
     int ret = av_read_frame(state->av_format_ctx, state->av_packet);
     //retrieve stats
     if(ret == (int)ErrorCode::SUCCESS)

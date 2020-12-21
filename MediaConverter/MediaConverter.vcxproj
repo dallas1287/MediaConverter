@@ -60,18 +60,22 @@
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
     <Import Project="..\..\ChoreoRecorder\VSProps\Paths.props" />
+    <Import Project="..\..\ChoreoRecorder\VSProps\FFmpeg.props" />
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
     <Import Project="..\..\ChoreoRecorder\VSProps\Paths.props" />
+    <Import Project="..\..\ChoreoRecorder\VSProps\FFmpeg.props" />
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
     <Import Project="..\..\ChoreoRecorder\VSProps\Paths.props" />
+    <Import Project="..\..\ChoreoRecorder\VSProps\FFmpeg.props" />
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
     <Import Project="..\..\ChoreoRecorder\VSProps\Paths.props" />
+    <Import Project="..\..\ChoreoRecorder\VSProps\FFmpeg.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -85,12 +89,12 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
     <TargetName>MediaConverter</TargetName>
-    <OutDir>$(SolutionDir)\bin\</OutDir>
+    <OutDir>$(SolutionDir)lib\</OutDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
     <TargetName>MediaConverter</TargetName>
-    <OutDir>$(SolutionDir)\bin\</OutDir>
+    <OutDir>$(SolutionDir)lib\</OutDir>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -136,22 +140,19 @@
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>$(FFMPEG)\include</AdditionalIncludeDirectories>
       <DisableSpecificWarnings>26451</DisableSpecificWarnings>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
-      <AdditionalLibraryDirectories>$(FFMPEG)\lib\</AdditionalLibraryDirectories>
-      <AdditionalDependencies>avcodec.lib;avdevice.lib;avfilter.lib;avformat.lib;avutil.lib;postproc.lib;swresample.lib;swscale.lib</AdditionalDependencies>
     </Link>
     <PreBuildEvent>
       <Command>
       </Command>
     </PreBuildEvent>
     <PostBuildEvent>
-      <Command>xcopy /y/d "$(SolutionDir)\bin\MediaConverter.dll" "$(SolutionDir)$(IntDir)"</Command>
+      <Command>xcopy /y/d "$(SolutionDir)lib\MediaConverter.dll" "$(SolutionDir)$(IntDir)"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -164,7 +165,6 @@
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>$(FFMPEG)\include</AdditionalIncludeDirectories>
       <DisableSpecificWarnings>26451</DisableSpecificWarnings>
     </ClCompile>
     <Link>
@@ -173,15 +173,13 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
-      <AdditionalLibraryDirectories>$(FFMPEG)\lib\</AdditionalLibraryDirectories>
-      <AdditionalDependencies>avcodec.lib;avdevice.lib;avfilter.lib;avformat.lib;avutil.lib;postproc.lib;swresample.lib;swscale.lib</AdditionalDependencies>
     </Link>
     <PreBuildEvent>
       <Command>
       </Command>
     </PreBuildEvent>
     <PostBuildEvent>
-      <Command>xcopy /y/d "$(SolutionDir)\bin\MediaConverter.dll" "$(SolutionDir)$(IntDir)"</Command>
+      <Command>xcopy /y/d "$(SolutionDir)lib\MediaConverter.dll" "$(SolutionDir)$(IntDir)"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>

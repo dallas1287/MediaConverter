@@ -252,7 +252,7 @@ public:
 	int64_t AudioFrameInterval() const
 	{
 		if (!IsRationalValid(AudioTimebase()) || !IsRationalValid(AudioAvgFrameRate()))
-			return audio_frame_interval;
+			return (std::max)((int64_t)1, audio_frame_interval);
 		auto ret = AudioTimebase().den / (double)AudioTimebase().num / AudioAvgFrameRateDbl();
 		if (ret == 0)
 			return audio_frame_interval;
