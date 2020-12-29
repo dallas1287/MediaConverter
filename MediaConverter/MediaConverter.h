@@ -488,8 +488,8 @@ public:
 	ErrorCode openVideoReader(const char* filename);
 	ErrorCode openVideoReader(MediaReaderState* state, const char* filename);
 
-	ErrorCode readVideoFrame(MediaReaderState* state, FBPtr& fb_ptr);
-	ErrorCode readVideoFrame(FBPtr& fb_ptr);
+	ErrorCode readVideoFrame(MediaReaderState* state, std::vector<uint8_t>& buffer);
+	ErrorCode readVideoFrame(std::vector<uint8_t>& buffer);
 
 	ErrorCode readAudioFrame(MediaReaderState* state, AudioBuffer& audioBuffer);
 	ErrorCode readAudioFrame(AudioBuffer& audioBuffer);
@@ -497,8 +497,8 @@ public:
 	int readFrame();
 	int readFrame(MediaReaderState* state);
 
-	int outputToBuffer(FBPtr& fb_ptr);
-	int outputToBuffer(MediaReaderState*, FBPtr& fb_ptr);
+	int outputToBuffer(std::vector<uint8_t>& buffer);
+	int outputToBuffer(MediaReaderState*, std::vector<uint8_t>& buffer);
 
 	int outputToAudioBuffer(AudioBuffer& ab_ptr);
 	int outputToAudioBuffer(MediaReaderState*, AudioBuffer& ab_ptr);

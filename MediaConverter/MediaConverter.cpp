@@ -100,12 +100,12 @@ ErrorCode CMediaConverter::openVideoReader(MediaReaderState* state, const char* 
     return ErrorCode::SUCCESS;
 }
 
-ErrorCode CMediaConverter::readVideoFrame(FBPtr& fb_ptr)
+ErrorCode CMediaConverter::readVideoFrame(std::vector<uint8_t>& buffer)
 {
-    return readVideoFrame(&m_mrState, fb_ptr);
+    return readVideoFrame(&m_mrState, buffer);
 }
 
-ErrorCode CMediaConverter::readVideoFrame(MediaReaderState* state, FBPtr& fb_ptr)
+ErrorCode CMediaConverter::readVideoFrame(MediaReaderState* state, std::vector<uint8_t>& buffer)
 {
     int response = processVideoPacketsIntoFrames(state);
 
@@ -115,7 +115,7 @@ ErrorCode CMediaConverter::readVideoFrame(MediaReaderState* state, FBPtr& fb_ptr
         return ErrorCode::FILE_EOF;
     }
 
-    return (ErrorCode)outputToBuffer(state, fb_ptr);
+    return (ErrorCode)outputToBuffer(state, buffer);
 }
 
 ErrorCode CMediaConverter::readAudioFrame(AudioBuffer& audioBuffer)
@@ -259,12 +259,12 @@ int CMediaConverter::readFrame(MediaReaderState* state)
     return ret;
 }
 
-int CMediaConverter::outputToBuffer(FBPtr& fb_ptr)
+int CMediaConverter::outputToBuffer(std::vector<uint8_t>& buffer)
 {
-    return outputToBuffer(&m_mrState, fb_ptr);
+    return outputToBuffer(&m_mrState, buffer);
 }
 
-int CMediaConverter::outputToBuffer(MediaReaderState* state, FBPtr& fb_ptr)
+int CMediaConverter::outputToBuffer(MediaReaderState* state, std::vector<uint8_t>& buffer)
 {
     auto& sws_scaler_ctx = state->sws_scaler_ctx;
     auto& av_codec_ctx = state->video_codec_ctx;
@@ -287,10 +287,10 @@ int CMediaConverter::outputToBuffer(MediaReaderState* state, FBPtr& fb_ptr)
     if (size == 0)
         return -1;
 
-    fb_ptr.reset(new unsigned char[size]);
+    buffer.resize(size);
 
     //using 4 here because RGB0 designates 4 channels of values
-    unsigned char* dest[4] = { fb_ptr.get(), NULL, NULL, NULL };
+    unsigned char* dest[4] = { &buffer[0], NULL, NULL, NULL };
     int dest_linesize[4] = { state->VideoWidth() * 4, 0, 0, 0 };
 
     sws_scale(sws_scaler_ctx, av_frame->data, av_frame->linesize, 0, state->VideoHeight(), dest, dest_linesize);
