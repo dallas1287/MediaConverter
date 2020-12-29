@@ -3,6 +3,7 @@
 #include "pch.h"
 #include "framework.h"
 #include "MediaConverter.h"
+#include <thread>
 
 // This is the constructor of a class that has been exported.
 CMediaConverter::CMediaConverter()
@@ -60,7 +61,7 @@ ErrorCode CMediaConverter::openVideoReader(MediaReaderState* state, const char* 
             if (!av_codec_ctx)
                 return ErrorCode::NO_CODEC_CTX;
 
-            av_codec_ctx->thread_count = 8;
+            av_codec_ctx->thread_count = std::thread::hardware_concurrency();
 
             if (avcodec_parameters_to_context(av_codec_ctx, av_codec_params) < 0)
                 return ErrorCode::CODEC_CTX_UNINIT;
