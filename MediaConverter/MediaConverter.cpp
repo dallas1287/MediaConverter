@@ -101,12 +101,12 @@ ErrorCode CMediaConverter::openVideoReader(MediaReaderState* state, const char* 
     return ErrorCode::SUCCESS;
 }
 
-ErrorCode CMediaConverter::readVideoFrame(std::vector<uint8_t>& buffer)
+ErrorCode CMediaConverter::readVideoFrame(VideoBuffer& buffer)
 {
     return readVideoFrame(&m_mrState, buffer);
 }
 
-ErrorCode CMediaConverter::readVideoFrame(MediaReaderState* state, std::vector<uint8_t>& buffer)
+ErrorCode CMediaConverter::readVideoFrame(MediaReaderState* state, VideoBuffer& buffer)
 {
     int response = processVideoPacketsIntoFrames(state);
 
@@ -260,12 +260,12 @@ int CMediaConverter::readFrame(MediaReaderState* state)
     return ret;
 }
 
-int CMediaConverter::outputToBuffer(std::vector<uint8_t>& buffer)
+int CMediaConverter::outputToBuffer(VideoBuffer& buffer)
 {
     return outputToBuffer(&m_mrState, buffer);
 }
 
-int CMediaConverter::outputToBuffer(MediaReaderState* state, std::vector<uint8_t>& buffer)
+int CMediaConverter::outputToBuffer(MediaReaderState* state, VideoBuffer& buffer)
 {
     auto& sws_scaler_ctx = state->sws_scaler_ctx;
     auto& av_codec_ctx = state->video_codec_ctx;
